@@ -1,0 +1,6 @@
+common --remote_cache=http://192.168.1.180:5000
+common --cxxopt=-std=c++20
+common --host_cxxopt=-std=c++20
+common --compilation_mode=opt
+
+test --test_output=errors
