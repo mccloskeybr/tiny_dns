@@ -12,6 +12,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "src/status_macros.h"
 
 absl::StatusOr<uint8_t> BufferReader::ReadU8() {
@@ -127,23 +128,28 @@ absl::Status BufferWriter::WriteU32(const uint32_t x) {
 absl::StatusOr<uint16_t> BufferWriter::WriteLabels(
     const std::vector<std::string>& labels) {
   uint16_t length = 0;
-  for (const std::string& label : labels) {
-    if (label.size() > 0x3f) {
-      return absl::InternalError("Label length is greater than 63!");
+  bool jumped = false;
+  for (size_t i = 0; i < labels.size(); i++) {
+    std::string merged_label = absl::StrJoin(labels.begin() + i, labels.end(), ".");
+    if (auto it = label_map_.find(merged_label); it != label_map_.end()) {
+      uint16_t jump = 0xc000 | it->second;
+      RETURN_IF_ERROR(WriteU16(jump));
+      length++;
+      jumped = true;
+      break;
     }
-    RETURN_IF_ERROR(WriteU8(label.size()));
-    for (uint8_t c : label) {
+    label_map_[merged_label] = (uint16_t) (cursor_ - bytes_.begin());
+    RETURN_IF_ERROR(WriteU8(labels[i].size()));
+    for (uint8_t c : labels[i]) {
       RETURN_IF_ERROR(WriteU8(c));
     }
-    length += label.size() + 1;
+    length += labels[i].size() + 1;
   }
-  RETURN_IF_ERROR(WriteU8(0));
-  length++;
+  if (!jumped) {
+    RETURN_IF_ERROR(WriteU8(0));
+    length++;
+  }
   return length;
-}
-
-std::array<uint8_t, 512> BufferWriter::GetBytes() {
-  return bytes_;
 }
 
 ResponseCode ResponseCodeFromByte(const uint8_t byte) {
@@ -465,7 +471,8 @@ std::string Record::DebugString() const {
   return result;
 }
 
-absl::StatusOr<DnsPacket> DnsPacket::FromBytes(std::array<uint8_t, 512>& bytes) {
+absl::StatusOr<DnsPacket> DnsPacket::FromBytes(
+    const std::array<uint8_t, 512>& bytes) {
   BufferReader reader(bytes);
   DnsPacket packet = {};
 
@@ -496,7 +503,8 @@ absl::StatusOr<DnsPacket> DnsPacket::FromBytes(std::array<uint8_t, 512>& bytes) 
 }
 
 absl::StatusOr<std::array<uint8_t, 512>> DnsPacket::ToBytes() {
-  BufferWriter writer;
+  std::array<uint8_t, 512> bytes = {};
+  BufferWriter writer(bytes);
 
   header.question_count = questions.size();
   header.answer_count = answers.size();
@@ -517,7 +525,7 @@ absl::StatusOr<std::array<uint8_t, 512>> DnsPacket::ToBytes() {
     RETURN_IF_ERROR(record.ToBytes(writer));
   }
 
-  return writer.GetBytes();
+  return bytes;
 }
 
 std::string DnsPacket::DebugString() const {

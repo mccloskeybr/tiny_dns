@@ -14,6 +14,7 @@ cc_library(
   hdrs = ["dns_packet.h"],
   deps = [
     ":status_macros",
+    "@abseil-cpp//absl/container:btree",
     "@abseil-cpp//absl/log:check",
     "@abseil-cpp//absl/log:log",
     "@abseil-cpp//absl/status:status",
@@ -46,9 +47,9 @@ cc_library(
 )
 
 cc_library(
-  name = "server",
-  srcs = ["server.cc"],
-  hdrs = ["server.h"],
+  name = "dns_server",
+  srcs = ["dns_server.cc"],
+  hdrs = ["dns_server.h"],
   deps = [
     ":client",
     ":status_macros",
@@ -69,8 +70,9 @@ cc_binary(
   ],
   deps = [
     ":dns_packet",
-    ":server",
+    ":dns_server",
     ":client",
+    "@abseil-cpp//absl/flags:flag",
     "@abseil-cpp//absl/flags:parse",
     "@abseil-cpp//absl/log:check",
     "@abseil-cpp//absl/log:flags",

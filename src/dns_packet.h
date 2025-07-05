@@ -10,11 +10,11 @@
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
+#include "absl/container/btree_map.h"
 
 class BufferReader {
  public:
-  BufferReader(std::array<uint8_t, 512>& bytes, size_t pos = 0)
+  BufferReader(const std::array<uint8_t, 512>& bytes, size_t pos = 0)
     : bytes_(bytes), cursor_(bytes_.data() + pos) {}
 
   absl::StatusOr<uint8_t> ReadU8();
@@ -23,24 +23,24 @@ class BufferReader {
   absl::StatusOr<std::vector<std::string>> ReadLabels(size_t num_jumps = 0);
 
  private:
-  std::array<uint8_t, 512>& bytes_;
-  uint8_t* cursor_;
+  const std::array<uint8_t, 512>& bytes_;
+  const uint8_t* cursor_;
 };
 
 class BufferWriter {
  public:
-  BufferWriter()
-    : bytes_(), cursor_(bytes_.data()) {}
+  BufferWriter(std::array<uint8_t, 512>& bytes, size_t pos = 0)
+    : bytes_(bytes), cursor_(bytes_.data() + pos), label_map_() {}
 
   absl::Status WriteU8(uint8_t x);
   absl::Status WriteU16(uint16_t x);
   absl::Status WriteU32(uint32_t x);
   absl::StatusOr<uint16_t> WriteLabels(const std::vector<std::string>& labels);
-  std::array<uint8_t, 512> GetBytes();
 
  private:
-  std::array<uint8_t, 512> bytes_;
+  std::array<uint8_t, 512>& bytes_;
   uint8_t* cursor_;
+  absl::btree_map<std::string, uint16_t> label_map_;
 };
 
 enum class ResponseCode : uint8_t {
@@ -85,6 +85,9 @@ struct Header {
   bool authed_data;
   bool z;
   bool recursion_available;
+
+  // NOTE: automatically updated when converting to bytes.
+  // TODO: could probably hide this from the struct.
   uint16_t question_count;
   uint16_t answer_count;
   uint16_t authority_count;
@@ -132,7 +135,7 @@ struct Record {
 
 struct DnsPacket {
   static absl::StatusOr<DnsPacket> FromBytes(
-      std::array<uint8_t, 512>& bytes);
+      const std::array<uint8_t, 512>& bytes);
   absl::StatusOr<std::array<uint8_t, 512>> ToBytes();
   std::string DebugString() const;
 

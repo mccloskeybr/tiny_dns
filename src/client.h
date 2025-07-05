@@ -72,8 +72,8 @@ class Client {
   }
 
  private:
-  int32_t socket_fd_;
-  struct sockaddr_in dest_addr_;
+  const int32_t socket_fd_;
+  const struct sockaddr_in dest_addr_;
 };
 
 #endif // SRC_CLIENT_H_

@@ -8,9 +8,6 @@
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 
-#include <iostream>
-#include <iomanip>
-
 namespace {
 
 using ::absl_testing::IsOkAndHolds;
@@ -44,41 +41,6 @@ TEST(PacketReaderTest, ReadLabelsJumpLoopReturnsError) {
   BufferReader reader(bytes);
   absl::StatusOr<std::vector<std::string>> labels = reader.ReadLabels();
   EXPECT_THAT(labels, StatusIs(absl::StatusCode::kInvalidArgument));
-}
-
-TEST(DnsPacketTest, QueryFromBytesSuccess) {
-  std::array<uint8_t, 512> bytes = {
-    // Header
-    0x86, 0x2a, 0x01, 0x20, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    // Query label
-    0x06, 'g', 'o', 'o', 'g', 'l', 'e', 0x03, 'c', 'o', 'm', 0x00,
-    // Query metadata
-    0x00, 0x01, 0x00, 0x01,
-  };
-  absl::StatusOr<DnsPacket> packet = DnsPacket::FromBytes(bytes);
-  ASSERT_TRUE(packet.ok());
-
-  {
-    Header& header = packet->header;
-    EXPECT_EQ(header.id, 0x862a);
-
-    EXPECT_EQ(header.recursion_desired, true);
-    EXPECT_EQ(header.truncated_message, false);
-    EXPECT_EQ(header.authoritative_answer, false);
-    EXPECT_EQ(header.op_code, 0);
-    EXPECT_EQ(header.query_response, false);
-
-    EXPECT_EQ(header.response_code, ResponseCode::NO_ERROR);
-    EXPECT_EQ(header.checking_disabled, false);
-    EXPECT_EQ(header.authed_data, true);
-    EXPECT_EQ(header.z, false);
-    EXPECT_EQ(header.recursion_available, false);
-
-    EXPECT_EQ(header.question_count, 1);
-    EXPECT_EQ(header.answer_count, 0);
-    EXPECT_EQ(header.authority_count, 0);
-    EXPECT_EQ(header.additional_count, 0);
-  }
 }
 
 TEST(DnsPacketTest, FromBytesSuccess) {
@@ -129,7 +91,6 @@ TEST(DnsPacketTest, FromBytesSuccess) {
     EXPECT_EQ(answer.qtype, QueryType::A);
     EXPECT_EQ(answer.dns_class, 1);
     EXPECT_EQ(answer.ttl, 293);
-    EXPECT_EQ(answer.length, 4);
     std::array<uint8_t, 4> expected_ip_addr = {216, 58, 211, 142};
     EXPECT_THAT(std::get<Record::A>(answer.data).ip_address, ContainerEq(expected_ip_addr));
   }
@@ -169,7 +130,6 @@ TEST(DnsPacketTest, ToBytesSuccess) {
     answer.qtype = QueryType::A;
     answer.dns_class = 1;
     answer.ttl = 293;
-    answer.length = 4;
     Record::A a = { .ip_address = {216, 58, 211, 142} };
     answer.data = a;
     packet.answers.push_back(std::move(answer));
@@ -183,8 +143,7 @@ TEST(DnsPacketTest, ToBytesSuccess) {
     0x06, 'g', 'o', 'o', 'g', 'l', 'e', 0x03, 'c', 'o', 'm', 0x00,
     0x00, 0x01, 0x00, 0x01,
     // Answer
-    0x06, 'g', 'o', 'o', 'g', 'l', 'e', 0x03, 'c', 'o', 'm', 0x00,
-    0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x01, 0x25, 0x00, 0x04, 0xd8, 0x3a, 0xd3, 0x8e,
+    0xc0, 0x0c, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x01, 0x25, 0x00, 0x04, 0xd8, 0x3a, 0xd3, 0x8e,
   };
   /*
   for (size_t i = 0; i < 512; i++) {

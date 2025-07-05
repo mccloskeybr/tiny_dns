@@ -4,48 +4,46 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 
+#include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
 #include "absl/log/initialize.h"
 #include "absl/log/log.h"
 #include "absl/log/check.h"
 #include "src/client.h"
-#include "src/server.h"
+#include "src/dns_server.h"
+
+ABSL_FLAG(std::string, dns_addr, "localhost",
+          "Address to serve UDP DNS lookups.");
+ABSL_FLAG(int32_t, dns_port, 4000,
+          "Port to serve UDP DNS lookups.");
+ABSL_FLAG(std::string, fallback_dns_addr, "8.8.8.8",
+          "If not empty, will forward failed resolution requests to this server.");
+ABSL_FLAG(int32_t, fallback_dns_port, 53,
+          "fallback DNS server port.");
 
 int main(int argc, char** argv) {
   absl::ParseCommandLine(argc, argv);
   absl::InitializeLog();
 
-  /*
-  absl::StatusOr<std::shared_ptr<Client>> client_status_or =
-    Client::Create("8.8.8.8", 53);
-  CHECK_OK(client_status_or);
-  auto client = std::move(*client_status_or);
+  std::shared_ptr<Client> fallback_dns = nullptr;
+  if (!absl::GetFlag(FLAGS_fallback_dns_addr).empty()) {
+    absl::StatusOr<std::shared_ptr<Client>> temp_fallback_dns = Client::Create(
+        absl::GetFlag(FLAGS_fallback_dns_addr),
+        absl::GetFlag(FLAGS_fallback_dns_port));
+    if (!temp_fallback_dns.ok()) {
+      LOG(ERROR) << "Error initiating fallback DNS connection: "
+        << temp_fallback_dns.status();
+      fallback_dns = nullptr;
+    } else {
+      fallback_dns = std::move(*temp_fallback_dns);
+    }
+  }
 
-  DnsPacket request = {};
-  request.header.id = 6666;
-  request.header.question_count = 1;
-  request.header.recursion_desired = true;
-  request.questions.push_back(Question {
-        .qname = {"google", "com"},
-        .qtype = QueryType::A,
-      });
-  LOG(INFO) << "Sending packet: " << request.DebugString();
-  absl::StatusOr<std::array<uint8_t, 512>> request_raw = request.ToBytes();
-  CHECK_OK(request_raw);
-
-  std::array<uint8_t, 512> response_raw = {0};
-  absl::Status call_status = client->Call(*request_raw, response_raw);
-  CHECK_OK(call_status);
-
-  absl::StatusOr<DnsPacket> response = DnsPacket::FromBytes(response_raw);
-  CHECK_OK(response);
-  LOG(INFO) << "Received packet: " << response->DebugString();
-  */
-
-  absl::StatusOr<std::shared_ptr<Server>> server_status_or = Server::Create(4000, "8.8.8.8", 53);
-  CHECK_OK(server_status_or);
-  auto server = std::move(*server_status_or);
-  server->Serve();
+  absl::StatusOr<std::shared_ptr<DnsServer>> dns_server = DnsServer::Create(
+      absl::GetFlag(FLAGS_dns_addr), absl::GetFlag(FLAGS_dns_port),
+      std::move(fallback_dns));
+  CHECK_OK(dns_server);
+  (*dns_server)->Wait();
 
   return 0;
 }
