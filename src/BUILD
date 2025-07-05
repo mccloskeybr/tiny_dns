@@ -33,6 +33,34 @@ cc_test(
   ],
 )
 
+
+cc_library(
+  name = "client",
+  hdrs = ["client.h"],
+  deps = [
+    "@abseil-cpp//absl/log:log",
+    "@abseil-cpp//absl/status:status",
+    "@abseil-cpp//absl/status:statusor",
+    "@abseil-cpp//absl/strings:strings",
+  ],
+)
+
+cc_library(
+  name = "server",
+  srcs = ["server.cc"],
+  hdrs = ["server.h"],
+  deps = [
+    ":client",
+    ":status_macros",
+    ":dns_packet",
+    "@abseil-cpp//absl/log:check",
+    "@abseil-cpp//absl/log:log",
+    "@abseil-cpp//absl/status:status",
+    "@abseil-cpp//absl/status:statusor",
+    "@abseil-cpp//absl/strings:strings",
+  ],
+)
+
 cc_binary(
   name = "main",
   srcs = ["main.cc"],
@@ -41,6 +69,8 @@ cc_binary(
   ],
   deps = [
     ":dns_packet",
+    ":server",
+    ":client",
     "@abseil-cpp//absl/flags:parse",
     "@abseil-cpp//absl/log:check",
     "@abseil-cpp//absl/log:flags",

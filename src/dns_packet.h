@@ -71,8 +71,8 @@ std::string QNameAssemble(const std::vector<std::string>& qname);
 
 struct Header {
   static absl::StatusOr<Header> FromBytes(BufferReader& reader);
-  absl::Status ToBytes(BufferWriter& writer);
-  std::string DebugString();
+  absl::Status ToBytes(BufferWriter& writer) const;
+  std::string DebugString() const;
 
   uint16_t id;
   bool recursion_desired;
@@ -93,8 +93,8 @@ struct Header {
 
 struct Question {
   static absl::StatusOr<Question> FromBytes(BufferReader& reader);
-  absl::Status ToBytes(BufferWriter& writer);
-  std::string DebugString();
+  absl::Status ToBytes(BufferWriter& writer) const;
+  std::string DebugString() const;
 
   std::vector<std::string> qname;
   QueryType qtype;
@@ -103,8 +103,8 @@ struct Question {
 
 struct Record {
   static absl::StatusOr<Record> FromBytes(BufferReader& reader);
-  absl::Status ToBytes(BufferWriter& writer);
-  std::string DebugString();
+  absl::Status ToBytes(BufferWriter& writer) const;
+  std::string DebugString() const;
 
   std::vector<std::string> qname;
   QueryType qtype;
@@ -134,7 +134,7 @@ struct DnsPacket {
   static absl::StatusOr<DnsPacket> FromBytes(
       std::array<uint8_t, 512>& bytes);
   absl::StatusOr<std::array<uint8_t, 512>> ToBytes();
-  std::string DebugString();
+  std::string DebugString() const;
 
   Header header;
   std::vector<Question> questions;

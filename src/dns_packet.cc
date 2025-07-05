@@ -239,7 +239,7 @@ absl::StatusOr<Header> Header::FromBytes(BufferReader& reader) {
   return header;
 }
 
-absl::Status Header::ToBytes(BufferWriter& writer) {
+absl::Status Header::ToBytes(BufferWriter& writer) const {
   {
     RETURN_IF_ERROR(writer.WriteU16(id));
   }
@@ -270,7 +270,7 @@ absl::Status Header::ToBytes(BufferWriter& writer) {
   return absl::OkStatus();
 }
 
-std::string Header::DebugString() {
+std::string Header::DebugString() const {
   std::string result;
   result += absl::StrCat("id: ", id, "\n");
   result += absl::StrCat("recursion_desired: ", recursion_desired, "\n");
@@ -301,14 +301,14 @@ absl::StatusOr<Question> Question::FromBytes(BufferReader& reader) {
   return question;
 }
 
-absl::Status Question::ToBytes(BufferWriter& writer) {
+absl::Status Question::ToBytes(BufferWriter& writer) const {
   RETURN_IF_ERROR(writer.WriteLabels(qname).status());
   RETURN_IF_ERROR(writer.WriteU16(QueryTypeToShort(qtype)));
   RETURN_IF_ERROR(writer.WriteU16(dns_class));
   return absl::OkStatus();
 }
 
-std::string Question::DebugString() {
+std::string Question::DebugString() const {
   std::string result;
   result += absl::StrCat("qname: ", QNameAssemble(qname), "\n");
   result += absl::StrCat("qtype: ", QueryTypeToString(qtype), "\n");
@@ -376,7 +376,7 @@ absl::StatusOr<Record> Record::FromBytes(BufferReader& reader) {
   return answer;
 }
 
-absl::Status Record::ToBytes(BufferWriter& writer) {
+absl::Status Record::ToBytes(BufferWriter& writer) const {
   {
     RETURN_IF_ERROR(writer.WriteLabels(qname).status());
     RETURN_IF_ERROR(writer.WriteU16(QueryTypeToShort(qtype)));
@@ -432,7 +432,7 @@ absl::Status Record::ToBytes(BufferWriter& writer) {
   return absl::OkStatus();
 }
 
-std::string Record::DebugString() {
+std::string Record::DebugString() const {
   std::string result;
   result += absl::StrCat("qname: ", QNameAssemble(qname), "\n");
   result += absl::StrCat("qtype: ", QueryTypeToString(qtype), "\n");
@@ -440,7 +440,7 @@ std::string Record::DebugString() {
   result += absl::StrCat("ttl: ", ttl, "\n");
   switch (qtype) {
     case QueryType::A: {
-      std::array<uint8_t, 4>& addr = std::get<Record::A>(data).ip_address;
+      const std::array<uint8_t, 4>& addr = std::get<Record::A>(data).ip_address;
       result += absl::StrCat("IPv4: ", addr[0], ".", addr[1], ".", addr[2], ".", addr[3], "\n");
     } break;
     case QueryType::NS: {
@@ -454,7 +454,7 @@ std::string Record::DebugString() {
       result += absl::StrCat("MX host: ", QNameAssemble(std::get<Record::MX>(data).host), "\n");
     } break;
     case QueryType::AAAA: {
-      std::array<uint16_t, 8>& addr = std::get<Record::AAAA>(data).ip_address;
+      const std::array<uint16_t, 8>& addr = std::get<Record::AAAA>(data).ip_address;
       result += absl::StrFormat(
           "IPv6: %0x:%0x:%0x:%0x:%0x:%0x:%0x:%0x\n",
           addr[0], addr[1], addr[2], addr[3], addr[4], addr[5], addr[6], addr[7]);
@@ -504,23 +504,23 @@ absl::StatusOr<std::array<uint8_t, 512>> DnsPacket::ToBytes() {
   header.additional_count = additional.size();
   RETURN_IF_ERROR(header.ToBytes(writer));
 
-  for (Question& question : questions) {
+  for (const Question& question : questions) {
     RETURN_IF_ERROR(question.ToBytes(writer));
   }
-  for (Record& record : answers) {
+  for (const Record& record : answers) {
     RETURN_IF_ERROR(record.ToBytes(writer));
   }
-  for (Record& record : authorities) {
+  for (const Record& record : authorities) {
     RETURN_IF_ERROR(record.ToBytes(writer));
   }
-  for (Record& record : additional) {
+  for (const Record& record : additional) {
     RETURN_IF_ERROR(record.ToBytes(writer));
   }
 
   return writer.GetBytes();
 }
 
-std::string DnsPacket::DebugString() {
+std::string DnsPacket::DebugString() const {
   std::string result;
   result += "{\n";
 
@@ -528,22 +528,22 @@ std::string DnsPacket::DebugString() {
   result += header.DebugString() + "\n";
 
   result += "Questions:\n";
-  for (Question& question : questions) {
+  for (const Question& question : questions) {
     result += question.DebugString() + "\n";
   }
 
   result += "Answers:\n";
-  for (Record& record : answers) {
+  for (const Record& record : answers) {
     result += record.DebugString() + "\n";
   }
 
   result += "Authorities:\n";
-  for (Record& record : authorities) {
+  for (const Record& record : authorities) {
     result += record.DebugString() + "\n";
   }
 
   result += "Additional:\n";
-  for (Record& record : additional) {
+  for (const Record& record : additional) {
     result += record.DebugString() + "\n";
   }
 
