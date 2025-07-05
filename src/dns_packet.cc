@@ -1,7 +1,9 @@
 #include "src/dns_packet.h"
 
+#include <array>
 #include <cstdint>
 #include <string>
+#include <variant>
 #include <vector>
 #include <utility>
 
@@ -12,7 +14,7 @@
 #include "absl/strings/str_cat.h"
 #include "src/status_macros.h"
 
-absl::StatusOr<uint8_t> BufferReader::ReadByte() {
+absl::StatusOr<uint8_t> BufferReader::ReadU8() {
   if (cursor_ > &bytes_.back()) {
     return absl::InvalidArgumentError(
         "Malformed packet detected! Attempting to read beyond buffer limit.");
@@ -22,39 +24,37 @@ absl::StatusOr<uint8_t> BufferReader::ReadByte() {
   return result;
 }
 
-absl::StatusOr<uint16_t> BufferReader::Read2Bytes() {
+absl::StatusOr<uint16_t> BufferReader::ReadU16() {
   uint16_t result = 0;
   uint8_t chunk = 0;
 
-  ASSIGN_OR_RETURN(chunk, ReadByte());
+  ASSIGN_OR_RETURN(chunk, ReadU8());
   result |= chunk;
   result <<= 8;
 
-  ASSIGN_OR_RETURN(chunk, ReadByte());
+  ASSIGN_OR_RETURN(chunk, ReadU8());
   result |= chunk;
-
   return result;
 }
 
-absl::StatusOr<uint32_t> BufferReader::Read4Bytes() {
+absl::StatusOr<uint32_t> BufferReader::ReadU32() {
   uint32_t result = 0;
   uint8_t chunk = 0;
 
-  ASSIGN_OR_RETURN(chunk, ReadByte());
+  ASSIGN_OR_RETURN(chunk, ReadU8());
   result |= chunk;
   result <<= 8;
 
-  ASSIGN_OR_RETURN(chunk, ReadByte());
+  ASSIGN_OR_RETURN(chunk, ReadU8());
   result |= chunk;
   result <<= 8;
 
-  ASSIGN_OR_RETURN(chunk, ReadByte());
+  ASSIGN_OR_RETURN(chunk, ReadU8());
   result |= chunk;
   result <<= 8;
 
-  ASSIGN_OR_RETURN(chunk, ReadByte());
+  ASSIGN_OR_RETURN(chunk, ReadU8());
   result |= chunk;
-
   return result;
 }
 
@@ -68,13 +68,13 @@ BufferReader::ReadLabels(size_t num_jumps) {
 
   std::vector<std::string> labels;
   while (true) {
-    ASSIGN_OR_RETURN(uint8_t chunk, ReadByte());
+    ASSIGN_OR_RETURN(uint8_t chunk, ReadU8());
 
     // NOTE: jump, get rest of labels from offset.
     if ((chunk & 0xc0) == 0xc0) {
-      uint8_t a = chunk;
-      ASSIGN_OR_RETURN(uint8_t b, ReadByte());
-      uint16_t offset = (((((uint16_t) a) << 8) | b) ^ 0xc000);
+      const uint8_t a = chunk;
+      ASSIGN_OR_RETURN(const uint8_t b, ReadU8());
+      const uint16_t offset = (((((uint16_t) a) << 8) | b) ^ 0xc000);
 
       BufferReader reader(bytes_, offset);
       ASSIGN_OR_RETURN(auto jumped_labels, reader.ReadLabels(num_jumps + 1));
@@ -88,11 +88,11 @@ BufferReader::ReadLabels(size_t num_jumps) {
     // NOTE: read from stream directly.
     else {
       std::string label;
-      uint8_t label_len = chunk;
+      const uint8_t label_len = chunk;
       label.reserve(label_len);
       // SPEEDUP: read whole string.
       for (uint8_t i = 0; i < label_len; i++) {
-        ASSIGN_OR_RETURN(uint8_t c, ReadByte());
+        ASSIGN_OR_RETURN(const uint8_t c, ReadU8());
         label += c;
       }
       labels.push_back(label);
@@ -101,7 +101,7 @@ BufferReader::ReadLabels(size_t num_jumps) {
   return labels;
 }
 
-absl::Status BufferWriter::WriteByte(uint8_t x) {
+absl::Status BufferWriter::WriteU8(const uint8_t x) {
   if (cursor_ > &bytes_.back()) {
     return absl::InternalError("Attempting to write beyond buffer limit!");
   }
@@ -110,33 +110,34 @@ absl::Status BufferWriter::WriteByte(uint8_t x) {
   return absl::OkStatus();
 }
 
-absl::Status BufferWriter::Write2Bytes(uint16_t x) {
-  RETURN_IF_ERROR(WriteByte(x >> 8));
-  RETURN_IF_ERROR(WriteByte(x >> 0));
+absl::Status BufferWriter::WriteU16(const uint16_t x) {
+  RETURN_IF_ERROR(WriteU8(x >> 8));
+  RETURN_IF_ERROR(WriteU8(x >> 0));
   return absl::OkStatus();
 }
 
-absl::Status BufferWriter::Write4Bytes(uint32_t x) {
-  RETURN_IF_ERROR(WriteByte(x >> 24));
-  RETURN_IF_ERROR(WriteByte(x >> 16));
-  RETURN_IF_ERROR(WriteByte(x >> 8));
-  RETURN_IF_ERROR(WriteByte(x >> 0));
+absl::Status BufferWriter::WriteU32(const uint32_t x) {
+  RETURN_IF_ERROR(WriteU8(x >> 24));
+  RETURN_IF_ERROR(WriteU8(x >> 16));
+  RETURN_IF_ERROR(WriteU8(x >> 8));
+  RETURN_IF_ERROR(WriteU8(x >> 0));
   return absl::OkStatus();
 }
 
-absl::StatusOr<uint16_t> BufferWriter::WriteLabels(const std::vector<std::string>& labels) {
+absl::StatusOr<uint16_t> BufferWriter::WriteLabels(
+    const std::vector<std::string>& labels) {
   uint16_t length = 0;
   for (const std::string& label : labels) {
     if (label.size() > 0x3f) {
       return absl::InternalError("Label length is greater than 63!");
     }
-    RETURN_IF_ERROR(WriteByte(label.size()));
+    RETURN_IF_ERROR(WriteU8(label.size()));
     for (uint8_t c : label) {
-      RETURN_IF_ERROR(WriteByte(c));
+      RETURN_IF_ERROR(WriteU8(c));
     }
     length += label.size() + 1;
   }
-  RETURN_IF_ERROR(WriteByte(0));
+  RETURN_IF_ERROR(WriteU8(0));
   length++;
   return length;
 }
@@ -145,16 +146,16 @@ std::array<uint8_t, 512> BufferWriter::GetBytes() {
   return bytes_;
 }
 
-ResponseCode ResponseCodeFromByte(uint8_t byte) {
+ResponseCode ResponseCodeFromByte(const uint8_t byte) {
   if (byte > 5) { return ResponseCode::NO_ERROR; }
   return static_cast<ResponseCode>(byte);
 }
 
-uint8_t ResponseCodeToByte(ResponseCode code) {
+uint8_t ResponseCodeToByte(const ResponseCode code) {
   return static_cast<uint8_t>(code);
 }
 
-std::string ResponseCodeToString(ResponseCode code) {
+std::string ResponseCodeToString(const ResponseCode code) {
   using enum ResponseCode;
   switch (code) {
     case NO_ERROR: return "NO_ERROR";
@@ -167,7 +168,7 @@ std::string ResponseCodeToString(ResponseCode code) {
   }
 }
 
-QueryType QueryTypeFromShort(uint16_t x) {
+QueryType QueryTypeFromShort(const uint16_t x) {
   using enum QueryType;
   switch (x) {
     case 1: return A;
@@ -182,11 +183,11 @@ QueryType QueryTypeFromShort(uint16_t x) {
   }
 }
 
-uint16_t QueryTypeToShort(QueryType type) {
+uint16_t QueryTypeToShort(const QueryType type) {
   return static_cast<uint16_t>(type);
 }
 
-std::string QueryTypeToString(QueryType type) {
+std::string QueryTypeToString(const QueryType type) {
   using enum QueryType;
   switch (type) {
     case UNKNOWN: return "UNKNOWN";
@@ -211,10 +212,10 @@ std::string QNameAssemble(const std::vector<std::string>& qname) {
 absl::StatusOr<Header> Header::FromBytes(BufferReader& reader) {
   Header header = {};
   {
-    ASSIGN_OR_RETURN(header.id, reader.Read2Bytes());
+    ASSIGN_OR_RETURN(header.id, reader.ReadU16());
   }
   {
-    ASSIGN_OR_RETURN(uint8_t chunk, reader.ReadByte());
+    ASSIGN_OR_RETURN(const uint8_t chunk, reader.ReadU8());
     header.recursion_desired = chunk >> 0 & 0b1;
     header.truncated_message = chunk >> 1 & 0b1;
     header.authoritative_answer = chunk >> 2 & 0b1;
@@ -222,7 +223,7 @@ absl::StatusOr<Header> Header::FromBytes(BufferReader& reader) {
     header.query_response = chunk >> 7 & 0b1;
   }
   {
-    ASSIGN_OR_RETURN(uint8_t chunk, reader.ReadByte());
+    ASSIGN_OR_RETURN(const uint8_t chunk, reader.ReadU8());
     header.response_code = ResponseCodeFromByte(chunk >> 0 & 0b1111);
     header.checking_disabled = chunk >> 4 & 0b1;
     header.authed_data = chunk >> 5 & 0b1;
@@ -230,17 +231,17 @@ absl::StatusOr<Header> Header::FromBytes(BufferReader& reader) {
     header.recursion_available = chunk >> 7 & 0b1;
   }
   {
-    ASSIGN_OR_RETURN(header.question_count, reader.Read2Bytes());
-    ASSIGN_OR_RETURN(header.answer_count, reader.Read2Bytes());
-    ASSIGN_OR_RETURN(header.authority_count, reader.Read2Bytes());
-    ASSIGN_OR_RETURN(header.additional_count, reader.Read2Bytes());
+    ASSIGN_OR_RETURN(header.question_count, reader.ReadU16());
+    ASSIGN_OR_RETURN(header.answer_count, reader.ReadU16());
+    ASSIGN_OR_RETURN(header.authority_count, reader.ReadU16());
+    ASSIGN_OR_RETURN(header.additional_count, reader.ReadU16());
   }
   return header;
 }
 
 absl::Status Header::ToBytes(BufferWriter& writer) {
   {
-    RETURN_IF_ERROR(writer.Write2Bytes(id));
+    RETURN_IF_ERROR(writer.WriteU16(id));
   }
   {
     uint8_t chunk = 0;
@@ -249,7 +250,7 @@ absl::Status Header::ToBytes(BufferWriter& writer) {
     chunk |= authoritative_answer << 2;
     chunk |= op_code << 3;
     chunk |= query_response << 7;
-    RETURN_IF_ERROR(writer.WriteByte(chunk));
+    RETURN_IF_ERROR(writer.WriteU8(chunk));
   }
   {
     uint8_t chunk = 0;
@@ -258,13 +259,13 @@ absl::Status Header::ToBytes(BufferWriter& writer) {
     chunk |= authed_data << 5;
     chunk |= z << 6;
     chunk |= recursion_available << 7;
-    RETURN_IF_ERROR(writer.WriteByte(chunk));
+    RETURN_IF_ERROR(writer.WriteU8(chunk));
   }
   {
-    RETURN_IF_ERROR(writer.Write2Bytes(question_count));
-    RETURN_IF_ERROR(writer.Write2Bytes(answer_count));
-    RETURN_IF_ERROR(writer.Write2Bytes(authority_count));
-    RETURN_IF_ERROR(writer.Write2Bytes(additional_count));
+    RETURN_IF_ERROR(writer.WriteU16(question_count));
+    RETURN_IF_ERROR(writer.WriteU16(answer_count));
+    RETURN_IF_ERROR(writer.WriteU16(authority_count));
+    RETURN_IF_ERROR(writer.WriteU16(additional_count));
   }
   return absl::OkStatus();
 }
@@ -293,17 +294,17 @@ absl::StatusOr<Question> Question::FromBytes(BufferReader& reader) {
   Question question = {};
   {
     ASSIGN_OR_RETURN(question.qname, reader.ReadLabels());
-    ASSIGN_OR_RETURN(uint16_t qtype_raw, reader.Read2Bytes());
+    ASSIGN_OR_RETURN(const uint16_t qtype_raw, reader.ReadU16());
     question.qtype = QueryTypeFromShort(qtype_raw);
-    ASSIGN_OR_RETURN(question.dns_class, reader.Read2Bytes());
+    ASSIGN_OR_RETURN(question.dns_class, reader.ReadU16());
   }
   return question;
 }
 
 absl::Status Question::ToBytes(BufferWriter& writer) {
   RETURN_IF_ERROR(writer.WriteLabels(qname).status());
-  RETURN_IF_ERROR(writer.Write2Bytes(QueryTypeToShort(qtype)));
-  RETURN_IF_ERROR(writer.Write2Bytes(dns_class));
+  RETURN_IF_ERROR(writer.WriteU16(QueryTypeToShort(qtype)));
+  RETURN_IF_ERROR(writer.WriteU16(dns_class));
   return absl::OkStatus();
 }
 
@@ -320,24 +321,22 @@ absl::StatusOr<Record> Record::FromBytes(BufferReader& reader) {
   uint16_t length = 0;
   {
     ASSIGN_OR_RETURN(answer.qname, reader.ReadLabels());
-    ASSIGN_OR_RETURN(uint16_t qtype_raw, reader.Read2Bytes());
+    ASSIGN_OR_RETURN(const uint16_t qtype_raw, reader.ReadU16());
     answer.qtype = QueryTypeFromShort(qtype_raw);
-    ASSIGN_OR_RETURN(answer.dns_class, reader.Read2Bytes());
-    ASSIGN_OR_RETURN(answer.ttl, reader.Read4Bytes());
-    ASSIGN_OR_RETURN(length, reader.Read2Bytes());
+    ASSIGN_OR_RETURN(answer.dns_class, reader.ReadU16());
+    ASSIGN_OR_RETURN(answer.ttl, reader.ReadU32());
+    ASSIGN_OR_RETURN(length, reader.ReadU16());
   }
-
   switch (answer.qtype) {
     case QueryType::A: {
       if (length != 4) {
-        LOG(WARNING) << absl::StrCat("Unexpected length for type A. Expected 4, got: ", length);
+        LOG(WARNING) << "Unexpected length for type A. Expected 4, got: " << length;
       }
       Record::A a = {};
-      ASSIGN_OR_RETURN(uint32_t raw, reader.Read4Bytes());
-      a.ip_address[0] = (uint8_t) ((raw >> 24) & 0xff);
-      a.ip_address[1] = (uint8_t) ((raw >> 16) & 0xff);
-      a.ip_address[2] = (uint8_t) ((raw >> 8)  & 0xff);
-      a.ip_address[3] = (uint8_t) ((raw >> 0)  & 0xff);
+      ASSIGN_OR_RETURN(a.ip_address[0], reader.ReadU8());
+      ASSIGN_OR_RETURN(a.ip_address[1], reader.ReadU8());
+      ASSIGN_OR_RETURN(a.ip_address[2], reader.ReadU8());
+      ASSIGN_OR_RETURN(a.ip_address[3], reader.ReadU8());
       answer.data = std::move(a);
     } break;
     case QueryType::NS: {
@@ -352,93 +351,84 @@ absl::StatusOr<Record> Record::FromBytes(BufferReader& reader) {
     } break;
     case QueryType::MX: {
       Record::MX mx = {};
-      ASSIGN_OR_RETURN(mx.priority, reader.Read2Bytes());
+      ASSIGN_OR_RETURN(mx.priority, reader.ReadU16());
       ASSIGN_OR_RETURN(mx.host, reader.ReadLabels());
       answer.data = std::move(mx);
     } break;
     case QueryType::AAAA: {
       if (length != 16) {
-        LOG(WARNING) << absl::StrCat("Unexpected length for type AAAA. Expected 16, got: ", length);
+        LOG(WARNING) << "Unexpected length for type AAAA. Expected 16, got: " << length;
       }
       Record::AAAA aaaa = {};
-      uint32_t chunk;
-      ASSIGN_OR_RETURN(chunk, reader.Read2Bytes());
-      aaaa.ip_address[0] = chunk;
-      ASSIGN_OR_RETURN(chunk, reader.Read2Bytes());
-      aaaa.ip_address[1] = chunk;
-      ASSIGN_OR_RETURN(chunk, reader.Read2Bytes());
-      aaaa.ip_address[2] = chunk;
-      ASSIGN_OR_RETURN(chunk, reader.Read2Bytes());
-      aaaa.ip_address[3] = chunk;
-      ASSIGN_OR_RETURN(chunk, reader.Read2Bytes());
-      aaaa.ip_address[4] = chunk;
-      ASSIGN_OR_RETURN(chunk, reader.Read2Bytes());
-      aaaa.ip_address[5] = chunk;
-      ASSIGN_OR_RETURN(chunk, reader.Read2Bytes());
-      aaaa.ip_address[6] = chunk;
-      ASSIGN_OR_RETURN(chunk, reader.Read2Bytes());
-      aaaa.ip_address[7] = chunk;
-      answer.data = std::move(aaaa);
+      ASSIGN_OR_RETURN(aaaa.ip_address[0], reader.ReadU16());
+      ASSIGN_OR_RETURN(aaaa.ip_address[1], reader.ReadU16());
+      ASSIGN_OR_RETURN(aaaa.ip_address[2], reader.ReadU16());
+      ASSIGN_OR_RETURN(aaaa.ip_address[3], reader.ReadU16());
+      ASSIGN_OR_RETURN(aaaa.ip_address[4], reader.ReadU16());
+      ASSIGN_OR_RETURN(aaaa.ip_address[5], reader.ReadU16());
+      ASSIGN_OR_RETURN(aaaa.ip_address[6], reader.ReadU16());
+      ASSIGN_OR_RETURN(aaaa.ip_address[7], reader.ReadU16());
+      answer.data = aaaa;
     } break;
     case QueryType::UNKNOWN: {} break;
     default: { CHECK(false); } break;
   }
-
   return answer;
 }
 
 absl::Status Record::ToBytes(BufferWriter& writer) {
   {
     RETURN_IF_ERROR(writer.WriteLabels(qname).status());
-    RETURN_IF_ERROR(writer.Write2Bytes(QueryTypeToShort(qtype)));
-    RETURN_IF_ERROR(writer.Write2Bytes(dns_class));
-    RETURN_IF_ERROR(writer.Write4Bytes(ttl));
+    RETURN_IF_ERROR(writer.WriteU16(QueryTypeToShort(qtype)));
+    RETURN_IF_ERROR(writer.WriteU16(dns_class));
+    RETURN_IF_ERROR(writer.WriteU32(ttl));
   }
-
   switch (qtype) {
     case QueryType::A: {
-      RETURN_IF_ERROR(writer.Write2Bytes(4));
-      uint32_t chunk = 0;
-      chunk |= std::get<Record::A>(data).ip_address[0] << 24;
-      chunk |= std::get<Record::A>(data).ip_address[1] << 16;
-      chunk |= std::get<Record::A>(data).ip_address[2] << 8;
-      chunk |= std::get<Record::A>(data).ip_address[3] << 0;
-      RETURN_IF_ERROR(writer.Write4Bytes(chunk));
+      RETURN_IF_ERROR(writer.WriteU16(4));
+      const Record::A& a = std::get<Record::A>(data);
+      RETURN_IF_ERROR(writer.WriteU8(a.ip_address[0]));
+      RETURN_IF_ERROR(writer.WriteU8(a.ip_address[1]));
+      RETURN_IF_ERROR(writer.WriteU8(a.ip_address[2]));
+      RETURN_IF_ERROR(writer.WriteU8(a.ip_address[3]));
     } break;
     case QueryType::NS: {
+      const Record::NS& ns = std::get<Record::NS>(data);
       BufferWriter len_ptr = writer;
-      RETURN_IF_ERROR(writer.Write2Bytes(0)); // NOTE: write length after label block size is known.
-      ASSIGN_OR_RETURN(uint16_t len, writer.WriteLabels(std::get<Record::NS>(data).host));
-      RETURN_IF_ERROR(len_ptr.Write2Bytes(len));
+      RETURN_IF_ERROR(writer.WriteU16(0)); // NOTE: write length after label block size is known.
+      ASSIGN_OR_RETURN(uint16_t len, writer.WriteLabels(ns.host));
+      RETURN_IF_ERROR(len_ptr.WriteU16(len));
     } break;
     case QueryType::CNAME: {
+      const Record::CNAME& cname = std::get<Record::CNAME>(data);
       BufferWriter len_ptr = writer;
-      RETURN_IF_ERROR(writer.Write2Bytes(0));
-      ASSIGN_OR_RETURN(uint16_t len, writer.WriteLabels(std::get<Record::CNAME>(data).host));
-      RETURN_IF_ERROR(len_ptr.Write2Bytes(len));
+      RETURN_IF_ERROR(writer.WriteU16(0));
+      ASSIGN_OR_RETURN(uint16_t len, writer.WriteLabels(cname.host));
+      RETURN_IF_ERROR(len_ptr.WriteU16(len));
     } break;
     case QueryType::MX: {
+      const Record::MX& mx = std::get<Record::MX>(data);
       BufferWriter len_ptr = writer;
-      RETURN_IF_ERROR(writer.Write2Bytes(0));
-      RETURN_IF_ERROR(writer.Write2Bytes(std::get<Record::MX>(data).priority));
-      ASSIGN_OR_RETURN(uint16_t len, writer.WriteLabels(std::get<Record::MX>(data).host));
-      RETURN_IF_ERROR(len_ptr.Write2Bytes(2 + len));
+      RETURN_IF_ERROR(writer.WriteU16(0));
+      RETURN_IF_ERROR(writer.WriteU16(mx.priority));
+      ASSIGN_OR_RETURN(uint16_t len, writer.WriteLabels(mx.host));
+      RETURN_IF_ERROR(len_ptr.WriteU16(2 + len));
     } break;
     case QueryType::AAAA: {
-      RETURN_IF_ERROR(writer.Write2Bytes(16));
-      RETURN_IF_ERROR(writer.Write2Bytes(std::get<Record::AAAA>(data).ip_address[0]));
-      RETURN_IF_ERROR(writer.Write2Bytes(std::get<Record::AAAA>(data).ip_address[1]));
-      RETURN_IF_ERROR(writer.Write2Bytes(std::get<Record::AAAA>(data).ip_address[2]));
-      RETURN_IF_ERROR(writer.Write2Bytes(std::get<Record::AAAA>(data).ip_address[3]));
-      RETURN_IF_ERROR(writer.Write2Bytes(std::get<Record::AAAA>(data).ip_address[4]));
-      RETURN_IF_ERROR(writer.Write2Bytes(std::get<Record::AAAA>(data).ip_address[5]));
-      RETURN_IF_ERROR(writer.Write2Bytes(std::get<Record::AAAA>(data).ip_address[6]));
-      RETURN_IF_ERROR(writer.Write2Bytes(std::get<Record::AAAA>(data).ip_address[7]));
+      const Record::AAAA& aaaa = std::get<Record::AAAA>(data);
+      RETURN_IF_ERROR(writer.WriteU16(16));
+      RETURN_IF_ERROR(writer.WriteU16(aaaa.ip_address[0]));
+      RETURN_IF_ERROR(writer.WriteU16(aaaa.ip_address[1]));
+      RETURN_IF_ERROR(writer.WriteU16(aaaa.ip_address[2]));
+      RETURN_IF_ERROR(writer.WriteU16(aaaa.ip_address[3]));
+      RETURN_IF_ERROR(writer.WriteU16(aaaa.ip_address[4]));
+      RETURN_IF_ERROR(writer.WriteU16(aaaa.ip_address[5]));
+      RETURN_IF_ERROR(writer.WriteU16(aaaa.ip_address[6]));
+      RETURN_IF_ERROR(writer.WriteU16(aaaa.ip_address[7]));
     } break;
     case QueryType::UNKNOWN: {} break;
     default: CHECK(false); break;
   }
-
   return absl::OkStatus();
 }
 
@@ -448,7 +438,6 @@ std::string Record::DebugString() {
   result += absl::StrCat("qtype: ", QueryTypeToString(qtype), "\n");
   result += absl::StrCat("dns_class: ", dns_class, "\n");
   result += absl::StrCat("ttl: ", ttl, "\n");
-
   switch (qtype) {
     case QueryType::A: {
       std::array<uint8_t, 4>& addr = std::get<Record::A>(data).ip_address;
@@ -473,7 +462,6 @@ std::string Record::DebugString() {
     case QueryType::UNKNOWN: {} break;
     default: CHECK(false); break;
   }
-
   return result;
 }
 
@@ -510,12 +498,12 @@ absl::StatusOr<DnsPacket> DnsPacket::FromBytes(std::array<uint8_t, 512>& bytes) 
 absl::StatusOr<std::array<uint8_t, 512>> DnsPacket::ToBytes() {
   BufferWriter writer;
 
-  CHECK_EQ(header.question_count, questions.size());
-  CHECK_EQ(header.answer_count, answers.size());
-  CHECK_EQ(header.authority_count, authorities.size());
-  CHECK_EQ(header.additional_count, additional.size());
-
+  header.question_count = questions.size();
+  header.answer_count = answers.size();
+  header.authority_count = authorities.size();
+  header.additional_count = additional.size();
   RETURN_IF_ERROR(header.ToBytes(writer));
+
   for (Question& question : questions) {
     RETURN_IF_ERROR(question.ToBytes(writer));
   }

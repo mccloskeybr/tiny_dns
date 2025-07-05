@@ -38,8 +38,8 @@ int main(int argc, char** argv) {
   request.header.question_count = 1;
   request.header.recursion_desired = true;
   request.questions.push_back(Question {
-        .qname = {"yahoo", "com"},
-        .qtype = QueryType::MX,
+        .qname = {"google", "com"},
+        .qtype = QueryType::A,
       });
   LOG(INFO) << "Sending packet: " << request.DebugString();
   absl::StatusOr<std::array<uint8_t, 512>> request_raw = request.ToBytes();

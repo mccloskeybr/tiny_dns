@@ -5,8 +5,10 @@
 #include <cstdint>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 
@@ -15,10 +17,9 @@ class BufferReader {
   BufferReader(std::array<uint8_t, 512>& bytes, size_t pos = 0)
     : bytes_(bytes), cursor_(bytes_.data() + pos) {}
 
-  absl::StatusOr<uint8_t> ReadByte();
-  absl::StatusOr<uint16_t> Read2Bytes();
-  absl::StatusOr<uint32_t> Read4Bytes();
-
+  absl::StatusOr<uint8_t> ReadU8();
+  absl::StatusOr<uint16_t> ReadU16();
+  absl::StatusOr<uint32_t> ReadU32();
   absl::StatusOr<std::vector<std::string>> ReadLabels(size_t num_jumps = 0);
 
  private:
@@ -31,9 +32,9 @@ class BufferWriter {
   BufferWriter()
     : bytes_(), cursor_(bytes_.data()) {}
 
-  absl::Status WriteByte(uint8_t x);
-  absl::Status Write2Bytes(uint16_t x);
-  absl::Status Write4Bytes(uint32_t x);
+  absl::Status WriteU8(uint8_t x);
+  absl::Status WriteU16(uint16_t x);
+  absl::Status WriteU32(uint32_t x);
   absl::StatusOr<uint16_t> WriteLabels(const std::vector<std::string>& labels);
   std::array<uint8_t, 512> GetBytes();
 
