@@ -39,9 +39,17 @@ int main(int argc, char** argv) {
     }
   }
 
+  auto record_store = std::make_shared<RecordStore>();
+  record_store->Insert(Record{
+        .qname = { "google", "com" },
+        .qtype = QueryType::A,
+        .ttl = 1,
+        .data = Record::A { .ip_address = {1, 1, 1, 1} },
+      });
+
   absl::StatusOr<std::shared_ptr<DnsServer>> dns_server = DnsServer::Create(
       absl::GetFlag(FLAGS_dns_addr), absl::GetFlag(FLAGS_dns_port),
-      std::move(fallback_dns));
+      std::move(fallback_dns), record_store);
   CHECK_OK(dns_server);
   (*dns_server)->Wait();
 

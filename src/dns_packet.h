@@ -113,6 +113,7 @@ struct Record {
   QueryType qtype;
   uint16_t dns_class = 1;
   uint32_t ttl;
+  time_t retrieval_time;
 
   struct A {
     std::array<uint8_t, 4> ip_address;

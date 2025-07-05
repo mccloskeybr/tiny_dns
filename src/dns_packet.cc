@@ -278,21 +278,23 @@ absl::Status Header::ToBytes(BufferWriter& writer) const {
 
 std::string Header::DebugString() const {
   std::string result;
-  result += absl::StrCat("id: ", id, "\n");
-  result += absl::StrCat("recursion_desired: ", recursion_desired, "\n");
-  result += absl::StrCat("truncated_message: ", truncated_message, "\n");
-  result += absl::StrCat("authoritative_answer: ", authoritative_answer, "\n");
-  result += absl::StrCat("op_code: ", op_code, "\n");
-  result += absl::StrCat("query_response: ", query_response, "\n");
-  result += absl::StrCat("response_code: ", ResponseCodeToString(response_code), "\n");
-  result += absl::StrCat("checking_disabled: ", checking_disabled, "\n");
-  result += absl::StrCat("authed_data: ", authed_data, "\n");
-  result += absl::StrCat("z: ", z, "\n");
-  result += absl::StrCat("recursion_available: ", recursion_available, "\n");
-  result += absl::StrCat("question_count: ", question_count, "\n");
-  result += absl::StrCat("answer_count: ", answer_count, "\n");
-  result += absl::StrCat("authority_count: ", authority_count, "\n");
-  result += absl::StrCat("additional_count: ", additional_count, "\n");
+  result += "{ ";
+  result += absl::StrCat("id: ", id, " ");
+  result += absl::StrCat("recursion_desired: ", recursion_desired, " ");
+  result += absl::StrCat("truncated_message: ", truncated_message, " ");
+  result += absl::StrCat("authoritative_answer: ", authoritative_answer, " ");
+  result += absl::StrCat("op_code: ", op_code, " ");
+  result += absl::StrCat("query_response: ", query_response, " ");
+  result += absl::StrCat("response_code: ", ResponseCodeToString(response_code), " ");
+  result += absl::StrCat("checking_disabled: ", checking_disabled, " ");
+  result += absl::StrCat("authed_data: ", authed_data, " ");
+  result += absl::StrCat("z: ", z, " ");
+  result += absl::StrCat("recursion_available: ", recursion_available, " ");
+  result += absl::StrCat("question_count: ", question_count, " ");
+  result += absl::StrCat("answer_count: ", answer_count, " ");
+  result += absl::StrCat("authority_count: ", authority_count, " ");
+  result += absl::StrCat("additional_count: ", additional_count, " ");
+  result += "}";
   return result;
 }
 
@@ -316,9 +318,11 @@ absl::Status Question::ToBytes(BufferWriter& writer) const {
 
 std::string Question::DebugString() const {
   std::string result;
-  result += absl::StrCat("qname: ", QNameAssemble(qname), "\n");
-  result += absl::StrCat("qtype: ", QueryTypeToString(qtype), "\n");
-  result += absl::StrCat("dns_class: ", dns_class, "\n");
+  result += "{ ";
+  result += absl::StrCat("qname: ", QNameAssemble(qname), " ");
+  result += absl::StrCat("qtype: ", QueryTypeToString(qtype), " ");
+  result += absl::StrCat("dns_class: ", dns_class, " ");
+  result += "}";
   return result;
 }
 
@@ -440,34 +444,36 @@ absl::Status Record::ToBytes(BufferWriter& writer) const {
 
 std::string Record::DebugString() const {
   std::string result;
-  result += absl::StrCat("qname: ", QNameAssemble(qname), "\n");
-  result += absl::StrCat("qtype: ", QueryTypeToString(qtype), "\n");
-  result += absl::StrCat("dns_class: ", dns_class, "\n");
-  result += absl::StrCat("ttl: ", ttl, "\n");
+  result += "{ ";
+  result += absl::StrCat("qname: ", QNameAssemble(qname), " ");
+  result += absl::StrCat("qtype: ", QueryTypeToString(qtype), " ");
+  result += absl::StrCat("dns_class: ", dns_class, " ");
+  result += absl::StrCat("ttl: ", ttl, " ");
   switch (qtype) {
     case QueryType::A: {
       const std::array<uint8_t, 4>& addr = std::get<Record::A>(data).ip_address;
-      result += absl::StrCat("IPv4: ", addr[0], ".", addr[1], ".", addr[2], ".", addr[3], "\n");
+      result += absl::StrCat("IPv4: ", addr[0], ".", addr[1], ".", addr[2], ".", addr[3], " ");
     } break;
     case QueryType::NS: {
-      result += absl::StrCat("NS host: ", QNameAssemble(std::get<Record::NS>(data).host), "\n");
+      result += absl::StrCat("NS host: ", QNameAssemble(std::get<Record::NS>(data).host), " ");
     } break;
     case QueryType::CNAME: {
-      result += absl::StrCat("CNAME host: ", QNameAssemble(std::get<Record::CNAME>(data).host), "\n");
+      result += absl::StrCat("CNAME host: ", QNameAssemble(std::get<Record::CNAME>(data).host), " ");
     } break;
     case QueryType::MX: {
-      result += absl::StrCat("MX priority: ", std::get<Record::MX>(data).priority, "\n");
-      result += absl::StrCat("MX host: ", QNameAssemble(std::get<Record::MX>(data).host), "\n");
+      result += absl::StrCat("MX priority: ", std::get<Record::MX>(data).priority, " ");
+      result += absl::StrCat("MX host: ", QNameAssemble(std::get<Record::MX>(data).host), " ");
     } break;
     case QueryType::AAAA: {
       const std::array<uint16_t, 8>& addr = std::get<Record::AAAA>(data).ip_address;
       result += absl::StrFormat(
-          "IPv6: %0x:%0x:%0x:%0x:%0x:%0x:%0x:%0x\n",
+          "IPv6: %0x:%0x:%0x:%0x:%0x:%0x:%0x:%0x ",
           addr[0], addr[1], addr[2], addr[3], addr[4], addr[5], addr[6], addr[7]);
     } break;
     case QueryType::UNKNOWN: {} break;
     default: CHECK(false); break;
   }
+  result += "}";
   return result;
 }
 
@@ -530,31 +536,35 @@ absl::StatusOr<std::array<uint8_t, 512>> DnsPacket::ToBytes() {
 
 std::string DnsPacket::DebugString() const {
   std::string result;
-  result += "{\n";
+  result += "{ ";
 
-  result += "Header:\n";
-  result += header.DebugString() + "\n";
+  result += "Header: ";
+  result += header.DebugString() + " ";
 
-  result += "Questions:\n";
+  result += "Questions: [ ";
   for (const Question& question : questions) {
-    result += question.DebugString() + "\n";
+    result += question.DebugString() + " ";
   }
+  result += " ] ";
 
-  result += "Answers:\n";
+  result += "Answers: [ ";
   for (const Record& record : answers) {
-    result += record.DebugString() + "\n";
+    result += record.DebugString() + " ";
   }
+  result += " ] ";
 
-  result += "Authorities:\n";
+  result += "Authorities: [ ";
   for (const Record& record : authorities) {
-    result += record.DebugString() + "\n";
+    result += record.DebugString() + " ";
   }
+  result += " ] ";
 
-  result += "Additional:\n";
+  result += "Additional: [ ";
   for (const Record& record : additional) {
-    result += record.DebugString() + "\n";
+    result += record.DebugString() + " ";
   }
+  result += " ] ";
 
-  result += "}\n";
+  result += "}";
   return result;
 }

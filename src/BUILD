@@ -52,12 +52,24 @@ cc_library(
   hdrs = ["dns_server.h"],
   deps = [
     ":client",
-    ":status_macros",
     ":dns_packet",
+    ":record_store",
+    ":status_macros",
     "@abseil-cpp//absl/log:check",
     "@abseil-cpp//absl/log:log",
     "@abseil-cpp//absl/status:status",
     "@abseil-cpp//absl/status:statusor",
+    "@abseil-cpp//absl/strings:strings",
+  ],
+)
+
+cc_library(
+  name = "record_store",
+  srcs = ["record_store.cc"],
+  hdrs = ["record_store.h"],
+  deps = [
+    ":dns_packet",
+    "@abseil-cpp//absl/log:log",
     "@abseil-cpp//absl/strings:strings",
   ],
 )
