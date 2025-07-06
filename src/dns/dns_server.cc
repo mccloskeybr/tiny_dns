@@ -19,7 +19,7 @@
 
 void ServeRequest(DnsServer* server, std::array<uint8_t, 512> request_raw, struct sockaddr_in client_addr) {
   LOG(INFO) << "Serving request for: " << inet_ntoa(client_addr.sin_addr);
-  absl::StatusOr<std::array<uint8_t, 512>> response_raw = server->HandleRequest(request_raw);
+  const absl::StatusOr<std::array<uint8_t, 512>> response_raw = server->HandleRequest(request_raw);
   if (!response_raw.ok()) {
     LOG(ERROR) << "Error serving request: " << response_raw.status();
     return;
@@ -73,10 +73,9 @@ void DnsServer::Wait() {
 
 absl::StatusOr<std::array<uint8_t, 512>> DnsServer::HandleRequest(
     std::array<uint8_t, 512>& request_raw) {
-  absl::StatusOr<DnsPacket> request = DnsPacket::FromBytes(request_raw);
+  const absl::StatusOr<DnsPacket> request = DnsPacket::FromBytes(request_raw);
   if (!request.ok()) {
-    BufferReader reader(request_raw);
-    ASSIGN_OR_RETURN(uint16_t id, reader.ReadU16());
+    ASSIGN_OR_RETURN(uint16_t id, DnsPacket::FromBytesIdOnly(request_raw));
     return CreateResponseTemplate(id, ResponseCode::FORM_ERROR).ToBytes();
   }
 
@@ -93,14 +92,14 @@ absl::StatusOr<std::array<uint8_t, 512>> DnsServer::HandleRequest(
   return response->ToBytes();
 }
 
-absl::StatusOr<DnsPacket> DnsServer::Lookup(DnsPacket& request) {
+absl::StatusOr<DnsPacket> DnsServer::Lookup(const DnsPacket& request) {
   if (request.questions.size() != 1) {
     LOG(ERROR) << "Malformatted request detected.";
     return CreateResponseTemplate(request.header.id, ResponseCode::FORM_ERROR);
   }
 
   const Question& question = request.questions[0];
-  std::vector<Record> answers = record_store_->Query(question);
+  const std::vector<Record> answers = record_store_->Query(question);
   if (answers.size() == 0) {
     return absl::NotFoundError(
         absl::StrCat("No records found for qname: ", question.qname));
@@ -113,7 +112,7 @@ absl::StatusOr<DnsPacket> DnsServer::Lookup(DnsPacket& request) {
   return response;
 }
 
-absl::StatusOr<DnsPacket> DnsServer::Forward(DnsPacket& request) {
+absl::StatusOr<DnsPacket> DnsServer::Forward(const DnsPacket& request) {
   if (fallback_dns_ == nullptr) {
     return absl::UnavailableError("Fallback DNS is not configured.");
   }
@@ -121,7 +120,7 @@ absl::StatusOr<DnsPacket> DnsServer::Forward(DnsPacket& request) {
   ASSIGN_OR_RETURN(auto request_raw, request.ToBytes());
   std::array<uint8_t, 512> response_raw = {};
   RETURN_IF_ERROR(fallback_dns_->Call(request_raw, response_raw));
-  ASSIGN_OR_RETURN(DnsPacket response, DnsPacket::FromBytes(response_raw));
+  ASSIGN_OR_RETURN(const DnsPacket response, DnsPacket::FromBytes(response_raw));
   for (const Record& record : response.answers) {
     record_store_->InsertOrUpdate(record);
   }

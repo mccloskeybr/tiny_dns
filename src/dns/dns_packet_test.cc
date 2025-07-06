@@ -1,4 +1,4 @@
-#include "src/dns_packet.h"
+#include "src/dns/dns_packet.h"
 
 #include <array>
 #include <cstdint>
@@ -70,11 +70,12 @@ TEST(DnsPacketTest, FromBytesSuccess) {
     EXPECT_EQ(header.authed_data, false);
     EXPECT_EQ(header.z, false);
     EXPECT_EQ(header.recursion_available, true);
-
-    EXPECT_EQ(header.question_count, 1);
-    EXPECT_EQ(header.answer_count, 1);
-    EXPECT_EQ(header.authority_count, 0);
-    EXPECT_EQ(header.additional_count, 0);
+  }
+  {
+    EXPECT_EQ(packet->questions.size(), 1);
+    EXPECT_EQ(packet->answers.size(), 1);
+    EXPECT_EQ(packet->authorities.size(), 0);
+    EXPECT_EQ(packet->additional.size(), 0);
   }
   {
     Question question = packet->questions[0];
@@ -108,10 +109,6 @@ TEST(DnsPacketTest, ToBytesSuccess) {
     header.authed_data = false;
     header.z = false;
     header.recursion_available = true;
-    header.question_count = 1;
-    header.answer_count = 1;
-    header.authority_count = 0;
-    header.additional_count = 0;
     packet.header = std::move(header);
   }
   {

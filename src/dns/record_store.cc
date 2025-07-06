@@ -1,4 +1,4 @@
-#include "src/common/record_store.h"
+#include "src/dns/record_store.h"
 
 #include <chrono>
 #include <ctime>
@@ -17,7 +17,7 @@ void RemoveRecordAfterTtl(RecordStore* store, const Record record) {
   store->Remove(record);
 }
 
-void RecordStoreShard::InsertOrUpdate(Record to_insert) {
+bool RecordStoreShard::InsertOrUpdate(Record to_insert) {
   std::scoped_lock lock(mutex_);
   for (size_t i = 0; i < stored_records_.size(); i++) {
     const Record& record = stored_records_[i].record;
@@ -26,12 +26,13 @@ void RecordStoreShard::InsertOrUpdate(Record to_insert) {
     if (to_insert.data != record.data) { continue; }
 
     stored_records_[i].record = to_insert;
-    return;
+    return true;
   }
   stored_records_.push_back(StoredRecord {
       .ttl_check = time(nullptr),
       .record = to_insert,
       });
+  return false;
 }
 
 bool RecordStoreShard::Remove(const Record& to_remove) {
@@ -68,12 +69,16 @@ std::vector<Record> RecordStoreShard::Query(const Question& question) {
   return hits;
 }
 
-void RecordStore::InsertOrUpdate(Record to_insert) {
+bool RecordStore::InsertOrUpdate(Record to_insert) {
   const size_t hash = hasher_(to_insert.qname);
-  shards_[hash % kShardCount].InsertOrUpdate(to_insert);
-  LOG(INFO) << "Inserted record :" << to_insert.DebugString();
+  bool updated = shards_[hash % kShardCount].InsertOrUpdate(to_insert);
+  if (updated) { LOG(INFO) << "Updated record: " << to_insert.DebugString(); }
+  else { LOG(INFO) << "Inserted record: " << to_insert.DebugString(); }
+  // NOTE: update may lower the ttl, spawn another thread to attempt removal.
+  // TODO: should probably update the live thread instead?
   auto remove_after_ttl = std::thread(RemoveRecordAfterTtl, this, to_insert);
   remove_after_ttl.detach();
+  return updated;
 }
 
 bool RecordStore::Remove(const Record& to_remove) {

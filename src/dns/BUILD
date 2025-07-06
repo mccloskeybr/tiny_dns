@@ -28,6 +28,16 @@ cc_test(
   ],
 )
 
+cc_library(
+  name = "record_store",
+  srcs = ["record_store.cc"],
+  hdrs = ["record_store.h"],
+  deps = [
+    "//src/dns:dns_packet",
+    "@abseil-cpp//absl/log:log",
+    "@abseil-cpp//absl/strings:strings",
+  ],
+)
 
 cc_library(
   name = "client",
@@ -47,7 +57,7 @@ cc_library(
   deps = [
     ":client",
     ":dns_packet",
-    "//src/common:record_store",
+    ":record_store",
     "//src/common:status_macros",
     "@abseil-cpp//absl/log:check",
     "@abseil-cpp//absl/log:log",

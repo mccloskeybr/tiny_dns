@@ -8,7 +8,8 @@ enum QueryType {
 }
 
 message A {
-  string addr = 1; // e.g. 192.168.1.180
+  // e.g. 192.168.1.180
+  string addr = 1;
 }
 
 message Record {
@@ -20,12 +21,32 @@ message Record {
   }
 }
 
+message Question {
+  string qname = 1;
+  QueryType qtype = 2;
+}
+
 message InsertOrUpdateRequest {
   Record record = 1;
 }
 
 message InsertOrUpdateResponse {}
 
+message LookupRequest {
+  bool recursion_desired = 1;
+  Question question = 2;
+}
+
+message LookupResponse {
+  repeated Record answers = 1;
+}
+
 service DnsAdminService {
+  // NOTE: Inserts a DNS record into the table, with a given ttl.
+  // It's expected the service interested in maintaining the ttl regularly
+  // refreshes its own DNS record.
   rpc InsertOrUpdate(InsertOrUpdateRequest) returns (InsertOrUpdateResponse) {}
+
+  // NOTE: An alternative protocol for lookups via the gRPC channel.
+  rpc Lookup(LookupRequest) returns (LookupResponse) {}
 }

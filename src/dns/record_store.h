@@ -1,5 +1,5 @@
-#ifndef SRC_COMMON_RECORD_STORE_H_
-#define SRC_COMMON_RECORD_STORE_H_
+#ifndef SRC_DNS_RECORD_STORE_H_
+#define SRC_DNS_RECORD_STORE_H_
 
 #include <ctime>
 #include <mutex>
@@ -23,7 +23,7 @@ class RecordStoreShard {
  public:
   RecordStoreShard() : stored_records_(), mutex_() {}
 
-  void InsertOrUpdate(Record record);
+  bool InsertOrUpdate(Record record); // NOTE: true on update
   bool Remove(const Record& record);
   std::vector<Record> Query(const Question& question);
 
@@ -36,7 +36,7 @@ class RecordStore {
  public:
   RecordStore() : shards_(), hasher_() {}
 
-  void InsertOrUpdate(Record record);
+  bool InsertOrUpdate(Record record); // NOTE: true on update
   bool Remove(const Record& record);
   std::vector<Record> Query(const Question& question);
 
@@ -45,4 +45,4 @@ class RecordStore {
   std::hash<std::string> hasher_;
 };
 
-#endif // SRC_COMMON_RECORD_STORE_H_
+#endif // SRC_DNS_RECORD_STORE_H_

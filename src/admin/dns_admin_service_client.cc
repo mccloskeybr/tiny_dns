@@ -53,3 +53,8 @@ grpc::Status DnsAdminServiceClient::InsertOrUpdate(
   }
   return grpc::Status::OK;
 }
+
+grpc::Status DnsAdminServiceClient::Lookup(
+    const proto::LookupRequest& request,
+    proto::LookupResponse& response) {
+}

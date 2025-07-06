@@ -57,6 +57,9 @@ ResponseCode ResponseCodeFromByte(uint8_t byte);
 uint8_t ResponseCodeToByte(ResponseCode code);
 std::string ResponseCodeToString(ResponseCode code);
 
+// NOTE: To support arbitrary query types that this server does not have explicit
+// support for, raw types are static cast to QueryType. Therefore, expect that unknown
+// cases may be forwarded / must be caught using default -- don't just rely on UNKNOWN.
 enum class QueryType : uint16_t {
   UNKNOWN = 0,
   A = 1,
@@ -70,8 +73,14 @@ uint16_t QueryTypeToShort(QueryType type);
 std::string QueryTypeToString(QueryType type);
 
 struct Header {
-  static absl::StatusOr<Header> FromBytes(BufferReader& reader);
-  absl::Status ToBytes(BufferWriter& writer) const;
+  static absl::StatusOr<Header> FromBytes(
+      BufferReader& reader,
+      uint16_t& questions_count, uint16_t& answers_count,
+      uint16_t& authorities_count, uint16_t& additional_count);
+  absl::Status ToBytes(
+      BufferWriter& writer,
+      uint16_t questions_count, uint16_t answers_count,
+      uint16_t authorities_count, uint16_t additional_count) const;
   std::string DebugString() const;
 
   uint16_t id;
@@ -85,13 +94,6 @@ struct Header {
   bool authed_data;
   bool z;
   bool recursion_available;
-
-  // NOTE: automatically updated when converting to bytes.
-  // TODO: could probably hide this from the struct.
-  uint16_t question_count;
-  uint16_t answer_count;
-  uint16_t authority_count;
-  uint16_t additional_count;
 };
 
 struct Question {
@@ -115,6 +117,12 @@ struct Record {
   uint32_t ttl;
   time_t retrieval_time;
 
+  struct UNKNOWN {
+    std::vector<uint8_t> bytes;
+    bool operator==(const UNKNOWN& other) const {
+      return bytes == other.bytes;
+    }
+  };
   struct A {
     std::array<uint8_t, 4> ip_address;
     bool operator==(const A& other) const {
@@ -146,13 +154,15 @@ struct Record {
       return ip_address == other.ip_address;
     }
   };
-  std::variant<A, NS, CNAME, MX, AAAA> data;
+  std::variant<UNKNOWN, A, NS, CNAME, MX, AAAA> data;
 };
 
 struct DnsPacket {
   static absl::StatusOr<DnsPacket> FromBytes(
       const std::array<uint8_t, 512>& bytes);
-  absl::StatusOr<std::array<uint8_t, 512>> ToBytes();
+  static absl::StatusOr<uint16_t> FromBytesIdOnly(
+      const std::array<uint8_t, 512>& bytes);
+  absl::StatusOr<std::array<uint8_t, 512>> ToBytes() const;
   std::string DebugString() const;
 
   Header header;

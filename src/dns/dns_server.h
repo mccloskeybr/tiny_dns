@@ -9,9 +9,9 @@
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "src/common/record_store.h"
 #include "src/dns/client.h"
 #include "src/dns/dns_packet.h"
+#include "src/dns/record_store.h"
 
 // Triages and serves incoming UDP requests.
 class DnsServer {
@@ -32,8 +32,8 @@ class DnsServer {
  private:
   absl::StatusOr<std::array<uint8_t, 512>> HandleRequest(
       std::array<uint8_t, 512>& request_raw);
-  absl::StatusOr<DnsPacket> Lookup(DnsPacket& request);
-  absl::StatusOr<DnsPacket> Forward(DnsPacket& request);
+  absl::StatusOr<DnsPacket> Lookup(const DnsPacket& request);
+  absl::StatusOr<DnsPacket> Forward(const DnsPacket& request);
 
   DnsPacket CreateResponseTemplate(uint16_t id, ResponseCode response_code);
 

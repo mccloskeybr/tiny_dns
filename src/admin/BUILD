@@ -27,8 +27,9 @@ cc_library(
   hdrs = ["dns_admin_service_impl.h"],
   deps = [
     ":dns_admin_service_cc_grpc",
-    "//src/common:record_store",
+    "//src/dns:record_store",
     "//src/dns:dns_packet",
+    "//src/dns:client",
     "@abseil-cpp//absl/strings:strings",
     "@grpc//:grpc++",
   ],

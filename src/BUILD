@@ -10,10 +10,10 @@ cc_binary(
   ],
   deps = [
     "//src/admin:dns_admin_service_impl",
-    "//src/common:record_store",
+    "//src/dns:client",
     "//src/dns:dns_packet",
     "//src/dns:dns_server",
-    "//src/dns:client",
+    "//src/dns:record_store",
     "@abseil-cpp//absl/flags:flag",
     "@abseil-cpp//absl/flags:parse",
     "@abseil-cpp//absl/log:check",

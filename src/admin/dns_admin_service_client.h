@@ -27,6 +27,10 @@ class DnsAdminServiceClient {
       proto::InsertOrUpdateResponse& response,
       bool auto_refresh_ttl = false);
 
+  grpc::Status Lookup(
+      const proto::LookupRequest& request,
+      proto::LookupResponse& response);
+
  private:
   std::unique_ptr<proto::DnsAdminService::Stub> stub_;
   std::vector<std::thread> refresh_ttl_threads_;

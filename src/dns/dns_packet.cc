@@ -185,7 +185,7 @@ QueryType QueryTypeFromShort(const uint16_t x) {
     case 28: return AAAA;
     default: {
       LOG(WARNING) << "Observed unknown QueryType: " << x;
-      return UNKNOWN;
+      return static_cast<QueryType>(x);
     }
   }
 }
@@ -207,7 +207,10 @@ std::string QueryTypeToString(const QueryType type) {
   }
 }
 
-absl::StatusOr<Header> Header::FromBytes(BufferReader& reader) {
+absl::StatusOr<Header> Header::FromBytes(
+    BufferReader& reader,
+    uint16_t& questions_count, uint16_t& answers_count,
+    uint16_t& authorities_count, uint16_t& additional_count) {
   Header header = {};
   {
     ASSIGN_OR_RETURN(header.id, reader.ReadU16());
@@ -229,15 +232,18 @@ absl::StatusOr<Header> Header::FromBytes(BufferReader& reader) {
     header.recursion_available = chunk >> 7 & 0b1;
   }
   {
-    ASSIGN_OR_RETURN(header.question_count, reader.ReadU16());
-    ASSIGN_OR_RETURN(header.answer_count, reader.ReadU16());
-    ASSIGN_OR_RETURN(header.authority_count, reader.ReadU16());
-    ASSIGN_OR_RETURN(header.additional_count, reader.ReadU16());
+    ASSIGN_OR_RETURN(questions_count, reader.ReadU16());
+    ASSIGN_OR_RETURN(answers_count, reader.ReadU16());
+    ASSIGN_OR_RETURN(authorities_count, reader.ReadU16());
+    ASSIGN_OR_RETURN(additional_count, reader.ReadU16());
   }
   return header;
 }
 
-absl::Status Header::ToBytes(BufferWriter& writer) const {
+absl::Status Header::ToBytes(
+    BufferWriter& writer,
+    uint16_t questions_count, uint16_t answers_count,
+    uint16_t authorities_count, uint16_t additional_count) const {
   {
     RETURN_IF_ERROR(writer.WriteU16(id));
   }
@@ -260,9 +266,9 @@ absl::Status Header::ToBytes(BufferWriter& writer) const {
     RETURN_IF_ERROR(writer.WriteU8(chunk));
   }
   {
-    RETURN_IF_ERROR(writer.WriteU16(question_count));
-    RETURN_IF_ERROR(writer.WriteU16(answer_count));
-    RETURN_IF_ERROR(writer.WriteU16(authority_count));
+    RETURN_IF_ERROR(writer.WriteU16(questions_count));
+    RETURN_IF_ERROR(writer.WriteU16(answers_count));
+    RETURN_IF_ERROR(writer.WriteU16(authorities_count));
     RETURN_IF_ERROR(writer.WriteU16(additional_count));
   }
   return absl::OkStatus();
@@ -282,10 +288,6 @@ std::string Header::DebugString() const {
   result += absl::StrCat("authed_data: ", authed_data, " ");
   result += absl::StrCat("z: ", z, " ");
   result += absl::StrCat("recursion_available: ", recursion_available, " ");
-  result += absl::StrCat("question_count: ", question_count, " ");
-  result += absl::StrCat("answer_count: ", answer_count, " ");
-  result += absl::StrCat("authority_count: ", authority_count, " ");
-  result += absl::StrCat("additional_count: ", additional_count, " ");
   result += "}";
   return result;
 }
@@ -372,8 +374,16 @@ absl::StatusOr<Record> Record::FromBytes(BufferReader& reader) {
       ASSIGN_OR_RETURN(aaaa.ip_address[7], reader.ReadU16());
       answer.data = aaaa;
     } break;
-    case QueryType::UNKNOWN: {} break;
-    default: { CHECK(false); } break;
+    case QueryType::UNKNOWN:
+    default: {
+      Record::UNKNOWN unknown = {};
+      unknown.bytes.reserve(length);
+      for (size_t i = 0; i < length; i++) {
+        ASSIGN_OR_RETURN(uint8_t byte, reader.ReadU8());
+        unknown.bytes.push_back(byte);
+      }
+      answer.data = unknown;
+    } break;
   }
   return answer;
 }
@@ -428,8 +438,14 @@ absl::Status Record::ToBytes(BufferWriter& writer) const {
       RETURN_IF_ERROR(writer.WriteU16(aaaa.ip_address[6]));
       RETURN_IF_ERROR(writer.WriteU16(aaaa.ip_address[7]));
     } break;
-    case QueryType::UNKNOWN: {} break;
-    default: CHECK(false); break;
+    case QueryType::UNKNOWN:
+    default: {
+      const Record::UNKNOWN& unknown = std::get<Record::UNKNOWN>(data);
+      RETURN_IF_ERROR(writer.WriteU16(unknown.bytes.size()));
+      for (size_t i = 0; i < unknown.bytes.size(); i++) {
+        RETURN_IF_ERROR(writer.WriteU8(unknown.bytes[i]));
+      }
+    } break;
   }
   return absl::OkStatus();
 }
@@ -462,8 +478,10 @@ std::string Record::DebugString() const {
           "IPv6: %0x:%0x:%0x:%0x:%0x:%0x:%0x:%0x ",
           addr[0], addr[1], addr[2], addr[3], addr[4], addr[5], addr[6], addr[7]);
     } break;
-    case QueryType::UNKNOWN: {} break;
-    default: CHECK(false); break;
+    case QueryType::UNKNOWN:
+    default: {
+      result += absl::StrCat("Unknown byte length: ", std::get<Record::UNKNOWN>(data).bytes.size(), " ");
+    } break;
   }
   result += "}";
   return result;
@@ -474,25 +492,27 @@ absl::StatusOr<DnsPacket> DnsPacket::FromBytes(
   BufferReader reader(bytes);
   DnsPacket packet = {};
 
-  ASSIGN_OR_RETURN(packet.header, Header::FromBytes(reader));
-  packet.questions.reserve(packet.header.question_count);
-  packet.answers.reserve(packet.header.answer_count);
-  packet.authorities.reserve(packet.header.authority_count);
-  packet.additional.reserve(packet.header.additional_count);
+  uint16_t questions_count, answers_count, authorities_count, additional_count;
+  ASSIGN_OR_RETURN(packet.header, Header::FromBytes(
+        reader, questions_count, answers_count, authorities_count, additional_count));
+  packet.questions.reserve(questions_count);
+  packet.answers.reserve(answers_count);
+  packet.authorities.reserve(authorities_count);
+  packet.additional.reserve(additional_count);
 
-  for (size_t i = 0; i < packet.header.question_count; i++) {
+  for (size_t i = 0; i < questions_count; i++) {
     ASSIGN_OR_RETURN(Question question, Question::FromBytes(reader));
     packet.questions.push_back(std::move(question));
   }
-  for (size_t i = 0; i < packet.header.answer_count; i++) {
+  for (size_t i = 0; i < answers_count; i++) {
     ASSIGN_OR_RETURN(Record record, Record::FromBytes(reader));
     packet.answers.push_back(std::move(record));
   }
-  for (size_t i = 0; i < packet.header.authority_count; i++) {
+  for (size_t i = 0; i < authorities_count; i++) {
     ASSIGN_OR_RETURN(Record record, Record::FromBytes(reader));
     packet.authorities.push_back(std::move(record));
   }
-  for (size_t i = 0; i < packet.header.additional_count; i++) {
+  for (size_t i = 0; i < additional_count; i++) {
     ASSIGN_OR_RETURN(Record record, Record::FromBytes(reader));
     packet.additional.push_back(std::move(record));
   }
@@ -500,16 +520,17 @@ absl::StatusOr<DnsPacket> DnsPacket::FromBytes(
   return packet;
 }
 
-absl::StatusOr<std::array<uint8_t, 512>> DnsPacket::ToBytes() {
+absl::StatusOr<uint16_t> DnsPacket::FromBytesIdOnly(
+    const std::array<uint8_t, 512>& bytes) {
+  BufferReader reader(bytes);
+  return reader.ReadU16();
+}
+
+absl::StatusOr<std::array<uint8_t, 512>> DnsPacket::ToBytes() const {
   std::array<uint8_t, 512> bytes = {};
   BufferWriter writer(bytes);
-
-  header.question_count = questions.size();
-  header.answer_count = answers.size();
-  header.authority_count = authorities.size();
-  header.additional_count = additional.size();
-  RETURN_IF_ERROR(header.ToBytes(writer));
-
+  RETURN_IF_ERROR(header.ToBytes(
+        writer, questions.size(), answers.size(), authorities.size(), additional.size()));
   for (const Question& question : questions) {
     RETURN_IF_ERROR(question.ToBytes(writer));
   }
@@ -522,7 +543,6 @@ absl::StatusOr<std::array<uint8_t, 512>> DnsPacket::ToBytes() {
   for (const Record& record : additional) {
     RETURN_IF_ERROR(record.ToBytes(writer));
   }
-
   return bytes;
 }
 

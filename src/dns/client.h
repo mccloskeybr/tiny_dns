@@ -21,7 +21,7 @@ class Client {
   ~Client() { close(socket_fd_); }
 
   static absl::StatusOr<std::shared_ptr<Client>> Create(
-      std::string address, int32_t port) {
+      std::string local_address, std::string client_address, int32_t client_port) {
     int32_t socket_fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (socket_fd < 0) {
       return absl::FailedPreconditionError(
@@ -32,23 +32,25 @@ class Client {
     memset(&src_addr, 0, sizeof(src_addr));
     src_addr.sin_family = AF_INET;
     src_addr.sin_port = htons(0);
-    inet_pton(AF_INET, "localhost", &src_addr.sin_addr);
-    if (int32_t status = bind(socket_fd, (struct sockaddr*) &src_addr,
-          sizeof(src_addr)); status < 0) {
+    if (inet_pton(AF_INET, local_address.c_str(), &src_addr.sin_addr) <= 0) {
+      return absl::FailedPreconditionError(
+          absl::StrCat("Unable to translate address: ", local_address));
+    }
+    if (int32_t status = bind(
+        socket_fd, (struct sockaddr*) &src_addr, sizeof(src_addr)); status < 0) {
       close(socket_fd);
       return absl::FailedPreconditionError(
-          absl::StrCat("Unable to bind to localhost."));
+          absl::StrCat("Unable to bind to: ", local_address));
     }
 
     struct sockaddr_in dest_addr;
     memset(&dest_addr, 0, sizeof(dest_addr));
     dest_addr.sin_family = AF_INET;
-    dest_addr.sin_port = htons(53);
-    if (int32_t status = inet_pton(AF_INET, "8.8.8.8",
-          &dest_addr.sin_addr); status <= 0) {
+    dest_addr.sin_port = htons(client_port);
+    if (inet_pton(AF_INET, client_address.c_str(), &dest_addr.sin_addr) <= 0) {
       close(socket_fd);
       return absl::FailedPreconditionError(
-          absl::StrCat("Unable to translate address: ", address, ": ", status));
+          absl::StrCat("Unable to translate address: ", client_address));
     }
 
     return std::make_shared<Client>(socket_fd, dest_addr);
