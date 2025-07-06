@@ -1,5 +1,5 @@
-#ifndef SRC_SERVER_H_
-#define SRC_SERVER_H_
+#ifndef SRC_DNS_SERVER_H_
+#define SRC_DNS_SERVER_H_
 
 #include <cstdint>
 #include <memory>
@@ -9,9 +9,9 @@
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "src/client.h"
-#include "src/dns_packet.h"
-#include "src/record_store.h"
+#include "src/common/record_store.h"
+#include "src/dns/client.h"
+#include "src/dns/dns_packet.h"
 
 // Triages and serves incoming UDP requests.
 class DnsServer {
@@ -44,4 +44,4 @@ class DnsServer {
   friend void ServeRequest(DnsServer*, std::array<uint8_t, 512>, struct sockaddr_in);
 };
 
-#endif // SRC_SERVER_H_
+#endif // SRC_DNS_SERVER_H_

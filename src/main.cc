@@ -1,5 +1,6 @@
 #include <iostream>
 #include <cstring>
+#include <thread>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <unistd.h>
@@ -9,13 +10,19 @@
 #include "absl/log/initialize.h"
 #include "absl/log/log.h"
 #include "absl/log/check.h"
-#include "src/client.h"
-#include "src/dns_server.h"
+#include "grpcpp/grpcpp.h"
+#include "grpcpp/ext/proto_server_reflection_plugin.h"
+#include "src/common/record_store.h"
+#include "src/dns/client.h"
+#include "src/dns/dns_server.h"
+#include "src/admin/dns_admin_service_impl.h"
 
-ABSL_FLAG(std::string, dns_addr, "localhost",
-          "Address to serve UDP DNS lookups.");
+ABSL_FLAG(std::string, addr, "0.0.0.0",
+          "Address to serve from.");
 ABSL_FLAG(int32_t, dns_port, 4000,
           "Port to serve UDP DNS lookups.");
+ABSL_FLAG(int32_t, admin_port, 4001,
+          "Port to serve gRPC Admin functions from.");
 ABSL_FLAG(std::string, fallback_dns_addr, "8.8.8.8",
           "If not empty, will forward failed resolution requests to this server.");
 ABSL_FLAG(int32_t, fallback_dns_port, 53,
@@ -24,6 +31,8 @@ ABSL_FLAG(int32_t, fallback_dns_port, 53,
 int main(int argc, char** argv) {
   absl::ParseCommandLine(argc, argv);
   absl::InitializeLog();
+
+  auto record_store = std::make_shared<RecordStore>();
 
   std::shared_ptr<Client> fallback_dns = nullptr;
   if (!absl::GetFlag(FLAGS_fallback_dns_addr).empty()) {
@@ -38,20 +47,25 @@ int main(int argc, char** argv) {
       fallback_dns = std::move(*temp_fallback_dns);
     }
   }
-
-  auto record_store = std::make_shared<RecordStore>();
-  record_store->Insert(Record{
-        .qname = { "google", "com" },
-        .qtype = QueryType::A,
-        .ttl = 1,
-        .data = Record::A { .ip_address = {1, 1, 1, 1} },
-      });
-
   absl::StatusOr<std::shared_ptr<DnsServer>> dns_server = DnsServer::Create(
-      absl::GetFlag(FLAGS_dns_addr), absl::GetFlag(FLAGS_dns_port),
+      absl::GetFlag(FLAGS_addr), absl::GetFlag(FLAGS_dns_port),
       std::move(fallback_dns), record_store);
   CHECK_OK(dns_server);
-  (*dns_server)->Wait();
+  auto dns_thread = std::thread([&]{ (*dns_server)->Wait(); });
+
+  grpc::reflection::InitProtoReflectionServerBuilderPlugin();
+  grpc::ServerBuilder builder;
+  DnsAdminServiceImpl admin_service(record_store);
+  builder.RegisterService(&admin_service);
+  std::string admin_address = absl::StrCat(
+      absl::GetFlag(FLAGS_addr), ":", absl::GetFlag(FLAGS_admin_port));
+  builder.AddListeningPort(admin_address, grpc::InsecureServerCredentials());
+  std::unique_ptr<grpc::Server> admin_server(builder.BuildAndStart());
+  auto admin_thread = std::thread([&]{ admin_server->Wait(); });
+
+  LOG(INFO) << "DNS and Admin servers started.";
+  dns_thread.join();
+  admin_thread.join();
 
   return 0;
 }

@@ -1,11 +1,18 @@
-#ifndef SRC_RECORD_STORE_H_
-#define SRC_RECORD_STORE_H_
+#ifndef SRC_COMMON_RECORD_STORE_H_
+#define SRC_COMMON_RECORD_STORE_H_
 
 #include <ctime>
 #include <mutex>
 #include <vector>
 
-#include "src/dns_packet.h"
+#include "src/dns/dns_packet.h"
+
+// This is a really simple in-memory lookup table for
+// DNS records. Failed lookups get shunted and then cached here.
+// Manual entries are placed here. That kind of thing.
+
+// TODO: LRU cache to ensure shards don't become too large.
+static constexpr size_t kShardCount = 32;
 
 struct StoredRecord {
   time_t ttl_check;
@@ -16,7 +23,7 @@ class RecordStoreShard {
  public:
   RecordStoreShard() : stored_records_(), mutex_() {}
 
-  void Insert(Record record);
+  void InsertOrUpdate(Record record);
   bool Remove(const Record& record);
   std::vector<Record> Query(const Question& question);
 
@@ -29,14 +36,13 @@ class RecordStore {
  public:
   RecordStore() : shards_(), hasher_() {}
 
-  void Insert(Record record);
+  void InsertOrUpdate(Record record);
   bool Remove(const Record& record);
   std::vector<Record> Query(const Question& question);
 
  private:
-  static constexpr size_t kShardCount = 10;
   std::array<RecordStoreShard, kShardCount> shards_;
   std::hash<std::string> hasher_;
 };
 
-#endif
+#endif // SRC_COMMON_RECORD_STORE_H_

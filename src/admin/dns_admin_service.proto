@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package proto;
+
+enum QueryType {
+  QUERY_TYPE_UNKNOWN = 0;
+  QUERY_TYPE_A = 1;
+}
+
+message A {
+  string addr = 1; // e.g. 192.168.1.180
+}
+
+message Record {
+  string qname = 1;
+  QueryType qtype = 2;
+  uint32 ttl = 3;
+  oneof data {
+    A a = 4;
+  }
+}
+
+message InsertOrUpdateRequest {
+  Record record = 1;
+}
+
+message InsertOrUpdateResponse {}
+
+service DnsAdminService {
+  rpc InsertOrUpdate(InsertOrUpdateRequest) returns (InsertOrUpdateResponse) {}
+}

@@ -1,4 +1,4 @@
-#include "src/record_store.h"
+#include "src/common/record_store.h"
 
 #include <chrono>
 #include <ctime>
@@ -8,26 +8,30 @@
 
 #include "absl/log/log.h"
 #include "absl/strings/str_join.h"
-#include "src/dns_packet.h"
+#include "src/dns/dns_packet.h"
 
 void RemoveRecordAfterTtl(RecordStore* store, const Record record) {
-  if (record.ttl == 0) {
-    LOG(INFO) << "**Not** scheduling removal of: " << record.DebugString() << ", TTL is 0.";
-    return;
-  }
   LOG(INFO) << "Scheduling removal of: " << record.DebugString()
     << " in: " << record.ttl << "s.";
   std::this_thread::sleep_for(std::chrono::seconds(record.ttl));
   store->Remove(record);
 }
 
-void RecordStoreShard::Insert(Record to_insert) {
+void RecordStoreShard::InsertOrUpdate(Record to_insert) {
   std::scoped_lock lock(mutex_);
-  StoredRecord record = {
-    .ttl_check = time(nullptr),
-    .record = to_insert,
-  };
-  stored_records_.push_back(record);
+  for (size_t i = 0; i < stored_records_.size(); i++) {
+    const Record& record = stored_records_[i].record;
+    if (to_insert.qtype != record.qtype) { continue; }
+    if (to_insert.qname != record.qname) { continue; }
+    if (to_insert.data != record.data) { continue; }
+
+    stored_records_[i].record = to_insert;
+    return;
+  }
+  stored_records_.push_back(StoredRecord {
+      .ttl_check = time(nullptr),
+      .record = to_insert,
+      });
 }
 
 bool RecordStoreShard::Remove(const Record& to_remove) {
@@ -35,12 +39,8 @@ bool RecordStoreShard::Remove(const Record& to_remove) {
   for (size_t i = 0; i < stored_records_.size(); i++) {
     const Record& record = stored_records_[i].record;
     if (to_remove.qtype != record.qtype) { continue; }
-    if (to_remove.qname.size() != record.qname.size()) { continue; }
-    bool qnames_equal = true;
-    for (size_t j = 0; j < to_remove.qname.size(); j++) {
-      if (to_remove.qname[j] != record.qname[j]) { qnames_equal = false; break; }
-    }
-    if (!qnames_equal) { continue; }
+    if (to_remove.qname != record.qname) { continue; }
+    if (to_remove.data != record.data) { continue; }
 
     stored_records_[i] = stored_records_.back();
     stored_records_.pop_back();
@@ -52,18 +52,12 @@ bool RecordStoreShard::Remove(const Record& to_remove) {
 std::vector<Record> RecordStoreShard::Query(const Question& question) {
   std::scoped_lock lock(mutex_);
   std::vector<Record> hits;
+  time_t current_time = time(nullptr);
   for (StoredRecord& stored_record : stored_records_) {
     Record& record = stored_record.record;
     if (question.qtype != record.qtype && record.qtype != QueryType::CNAME) { continue; }
-    if (question.qname.size() != record.qname.size()) { continue; }
-    // TODO: SPEEDUP - cache merged qnames.
-    bool qnames_equal = true;
-    for (size_t i = 0; i < question.qname.size(); i++) {
-      if (question.qname[i] != record.qname[i]) { qnames_equal = false; break; }
-    }
-    if (!qnames_equal) { continue; }
+    if (question.qname != record.qname) { continue; }
 
-    time_t current_time = time(nullptr);
     uint16_t ttl_delta = current_time - stored_record.ttl_check;
     stored_record.ttl_check = current_time;
     // NOTE: assume removal thread will take care of removal
@@ -74,31 +68,29 @@ std::vector<Record> RecordStoreShard::Query(const Question& question) {
   return hits;
 }
 
-void RecordStore::Insert(Record to_insert) {
-  const size_t hash = hasher_(QNameAssemble(to_insert.qname));
-  shards_[hash % kShardCount].Insert(to_insert);
+void RecordStore::InsertOrUpdate(Record to_insert) {
+  const size_t hash = hasher_(to_insert.qname);
+  shards_[hash % kShardCount].InsertOrUpdate(to_insert);
   LOG(INFO) << "Inserted record :" << to_insert.DebugString();
   auto remove_after_ttl = std::thread(RemoveRecordAfterTtl, this, to_insert);
   remove_after_ttl.detach();
 }
 
 bool RecordStore::Remove(const Record& to_remove) {
-  const size_t hash = hasher_(QNameAssemble(to_remove.qname));
+  const size_t hash = hasher_(to_remove.qname);
   bool removed = shards_[hash % kShardCount].Remove(to_remove);
-  LOG(INFO) << "Removed record: " << to_remove.DebugString();
+  if (removed) { LOG(INFO) << "Removal succeeded for record: " << to_remove.DebugString(); }
+  else { LOG(INFO) << "Removal failed (not found) for record: " << to_remove.DebugString(); }
   return removed;
 }
 
 std::vector<Record> RecordStore::Query(const Question& question) {
-  const std::string assembled_qname = QNameAssemble(question.qname);
-  const size_t hash = hasher_(assembled_qname);
-
+  const size_t hash = hasher_(question.qname);
   const std::vector<Record> hits = shards_[hash % kShardCount].Query(question);
   std::vector<std::string> hit_qnames;
   hit_qnames.reserve(hits.size());
-  for (const Record& hit : hits) { hit_qnames.push_back(QNameAssemble(hit.qname)); }
+  for (const Record& hit : hits) { hit_qnames.push_back(hit.qname); }
   LOG(INFO) << "For question: " << question.DebugString()
     << ", record store contained: [ " << absl::StrJoin(hit_qnames, ", ") << " ].";
-
   return hits;
 }

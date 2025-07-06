@@ -1,5 +1,5 @@
-#ifndef SRC_CLIENT_H_
-#define SRC_CLIENT_H_
+#ifndef SRC_DNS_CLIENT_H_
+#define SRC_DNS_CLIENT_H_
 
 #include <cstdint>
 #include <memory>
@@ -76,4 +76,4 @@ class Client {
   const struct sockaddr_in dest_addr_;
 };
 
-#endif // SRC_CLIENT_H_
+#endif // SRC_DNS_CLIENT_H_

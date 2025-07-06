@@ -1,4 +1,4 @@
-#include "src/dns_packet.h"
+#include "src/dns/dns_packet.h"
 
 #include <array>
 #include <cstdint>
@@ -12,8 +12,9 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/str_join.h"
-#include "src/status_macros.h"
+#include "src/common/status_macros.h"
 
 absl::StatusOr<uint8_t> BufferReader::ReadU8() {
   if (cursor_ > &bytes_.back()) {
@@ -59,8 +60,8 @@ absl::StatusOr<uint32_t> BufferReader::ReadU32() {
   return result;
 }
 
-absl::StatusOr<std::vector<std::string>>
-BufferReader::ReadLabels(size_t num_jumps) {
+absl::StatusOr<std::string>
+BufferReader::ReadQName(size_t num_jumps) {
   static const size_t kMaxJumps = 5;
   if (num_jumps > kMaxJumps) {
     return absl::InvalidArgumentError(
@@ -78,13 +79,13 @@ BufferReader::ReadLabels(size_t num_jumps) {
       const uint16_t offset = (((((uint16_t) a) << 8) | b) ^ 0xc000);
 
       BufferReader reader(bytes_, offset);
-      ASSIGN_OR_RETURN(auto jumped_labels, reader.ReadLabels(num_jumps + 1));
-      labels.insert(labels.end(), jumped_labels.begin(), jumped_labels.end());
-      return labels;
+      ASSIGN_OR_RETURN(auto jumped_labels, reader.ReadQName(num_jumps + 1));
+      labels.push_back(jumped_labels);
+      return absl::StrJoin(labels, ".");
     }
 
     // NOTE: last byte in label list.
-    else if (chunk == 0) { return labels; }
+    else if (chunk == 0) { break; }
 
     // NOTE: read from stream directly.
     else {
@@ -99,7 +100,7 @@ BufferReader::ReadLabels(size_t num_jumps) {
       labels.push_back(label);
     }
   }
-  return labels;
+  return absl::StrJoin(labels, ".");
 }
 
 absl::Status BufferWriter::WriteU8(const uint8_t x) {
@@ -125,10 +126,10 @@ absl::Status BufferWriter::WriteU32(const uint32_t x) {
   return absl::OkStatus();
 }
 
-absl::StatusOr<uint16_t> BufferWriter::WriteLabels(
-    const std::vector<std::string>& labels) {
+absl::StatusOr<uint16_t> BufferWriter::WriteQName(const std::string& qname) {
   uint16_t length = 0;
   bool jumped = false;
+  std::vector<std::string> labels = absl::StrSplit(qname, ".");
   for (size_t i = 0; i < labels.size(); i++) {
     std::string merged_label = absl::StrJoin(labels.begin() + i, labels.end(), ".");
     if (auto it = label_map_.find(merged_label); it != label_map_.end()) {
@@ -204,15 +205,6 @@ std::string QueryTypeToString(const QueryType type) {
     case AAAA: return "AAAA";
     default: CHECK(false); return "";
   }
-}
-
-std::string QNameAssemble(const std::vector<std::string>& qname) {
-  std::string result;
-  for (size_t i = 0; i < qname.size(); i++) {
-    result += qname[i];
-    if (i < qname.size() - 1) { result += "."; }
-  }
-  return result;
 }
 
 absl::StatusOr<Header> Header::FromBytes(BufferReader& reader) {
@@ -301,7 +293,7 @@ std::string Header::DebugString() const {
 absl::StatusOr<Question> Question::FromBytes(BufferReader& reader) {
   Question question = {};
   {
-    ASSIGN_OR_RETURN(question.qname, reader.ReadLabels());
+    ASSIGN_OR_RETURN(question.qname, reader.ReadQName());
     ASSIGN_OR_RETURN(const uint16_t qtype_raw, reader.ReadU16());
     question.qtype = QueryTypeFromShort(qtype_raw);
     ASSIGN_OR_RETURN(question.dns_class, reader.ReadU16());
@@ -310,7 +302,7 @@ absl::StatusOr<Question> Question::FromBytes(BufferReader& reader) {
 }
 
 absl::Status Question::ToBytes(BufferWriter& writer) const {
-  RETURN_IF_ERROR(writer.WriteLabels(qname).status());
+  RETURN_IF_ERROR(writer.WriteQName(qname).status());
   RETURN_IF_ERROR(writer.WriteU16(QueryTypeToShort(qtype)));
   RETURN_IF_ERROR(writer.WriteU16(dns_class));
   return absl::OkStatus();
@@ -319,7 +311,7 @@ absl::Status Question::ToBytes(BufferWriter& writer) const {
 std::string Question::DebugString() const {
   std::string result;
   result += "{ ";
-  result += absl::StrCat("qname: ", QNameAssemble(qname), " ");
+  result += absl::StrCat("qname: ", qname, " ");
   result += absl::StrCat("qtype: ", QueryTypeToString(qtype), " ");
   result += absl::StrCat("dns_class: ", dns_class, " ");
   result += "}";
@@ -330,7 +322,7 @@ absl::StatusOr<Record> Record::FromBytes(BufferReader& reader) {
   Record answer = {};
   uint16_t length = 0;
   {
-    ASSIGN_OR_RETURN(answer.qname, reader.ReadLabels());
+    ASSIGN_OR_RETURN(answer.qname, reader.ReadQName());
     ASSIGN_OR_RETURN(const uint16_t qtype_raw, reader.ReadU16());
     answer.qtype = QueryTypeFromShort(qtype_raw);
     ASSIGN_OR_RETURN(answer.dns_class, reader.ReadU16());
@@ -351,18 +343,18 @@ absl::StatusOr<Record> Record::FromBytes(BufferReader& reader) {
     } break;
     case QueryType::NS: {
       Record::NS ns = {};
-      ASSIGN_OR_RETURN(ns.host, reader.ReadLabels());
+      ASSIGN_OR_RETURN(ns.host, reader.ReadQName());
       answer.data = std::move(ns);
     } break;
     case QueryType::CNAME: {
       Record::CNAME cname = {};
-      ASSIGN_OR_RETURN(cname.host, reader.ReadLabels());
+      ASSIGN_OR_RETURN(cname.host, reader.ReadQName());
       answer.data = std::move(cname);
     } break;
     case QueryType::MX: {
       Record::MX mx = {};
       ASSIGN_OR_RETURN(mx.priority, reader.ReadU16());
-      ASSIGN_OR_RETURN(mx.host, reader.ReadLabels());
+      ASSIGN_OR_RETURN(mx.host, reader.ReadQName());
       answer.data = std::move(mx);
     } break;
     case QueryType::AAAA: {
@@ -388,7 +380,7 @@ absl::StatusOr<Record> Record::FromBytes(BufferReader& reader) {
 
 absl::Status Record::ToBytes(BufferWriter& writer) const {
   {
-    RETURN_IF_ERROR(writer.WriteLabels(qname).status());
+    RETURN_IF_ERROR(writer.WriteQName(qname).status());
     RETURN_IF_ERROR(writer.WriteU16(QueryTypeToShort(qtype)));
     RETURN_IF_ERROR(writer.WriteU16(dns_class));
     RETURN_IF_ERROR(writer.WriteU32(ttl));
@@ -406,14 +398,14 @@ absl::Status Record::ToBytes(BufferWriter& writer) const {
       const Record::NS& ns = std::get<Record::NS>(data);
       BufferWriter len_ptr = writer;
       RETURN_IF_ERROR(writer.WriteU16(0)); // NOTE: write length after label block size is known.
-      ASSIGN_OR_RETURN(uint16_t len, writer.WriteLabels(ns.host));
+      ASSIGN_OR_RETURN(uint16_t len, writer.WriteQName(ns.host));
       RETURN_IF_ERROR(len_ptr.WriteU16(len));
     } break;
     case QueryType::CNAME: {
       const Record::CNAME& cname = std::get<Record::CNAME>(data);
       BufferWriter len_ptr = writer;
       RETURN_IF_ERROR(writer.WriteU16(0));
-      ASSIGN_OR_RETURN(uint16_t len, writer.WriteLabels(cname.host));
+      ASSIGN_OR_RETURN(uint16_t len, writer.WriteQName(cname.host));
       RETURN_IF_ERROR(len_ptr.WriteU16(len));
     } break;
     case QueryType::MX: {
@@ -421,7 +413,7 @@ absl::Status Record::ToBytes(BufferWriter& writer) const {
       BufferWriter len_ptr = writer;
       RETURN_IF_ERROR(writer.WriteU16(0));
       RETURN_IF_ERROR(writer.WriteU16(mx.priority));
-      ASSIGN_OR_RETURN(uint16_t len, writer.WriteLabels(mx.host));
+      ASSIGN_OR_RETURN(uint16_t len, writer.WriteQName(mx.host));
       RETURN_IF_ERROR(len_ptr.WriteU16(2 + len));
     } break;
     case QueryType::AAAA: {
@@ -445,7 +437,7 @@ absl::Status Record::ToBytes(BufferWriter& writer) const {
 std::string Record::DebugString() const {
   std::string result;
   result += "{ ";
-  result += absl::StrCat("qname: ", QNameAssemble(qname), " ");
+  result += absl::StrCat("qname: ", qname, " ");
   result += absl::StrCat("qtype: ", QueryTypeToString(qtype), " ");
   result += absl::StrCat("dns_class: ", dns_class, " ");
   result += absl::StrCat("ttl: ", ttl, " ");
@@ -455,14 +447,14 @@ std::string Record::DebugString() const {
       result += absl::StrCat("IPv4: ", addr[0], ".", addr[1], ".", addr[2], ".", addr[3], " ");
     } break;
     case QueryType::NS: {
-      result += absl::StrCat("NS host: ", QNameAssemble(std::get<Record::NS>(data).host), " ");
+      result += absl::StrCat("NS host: ", std::get<Record::NS>(data).host, " ");
     } break;
     case QueryType::CNAME: {
-      result += absl::StrCat("CNAME host: ", QNameAssemble(std::get<Record::CNAME>(data).host), " ");
+      result += absl::StrCat("CNAME host: ", std::get<Record::CNAME>(data).host, " ");
     } break;
     case QueryType::MX: {
       result += absl::StrCat("MX priority: ", std::get<Record::MX>(data).priority, " ");
-      result += absl::StrCat("MX host: ", QNameAssemble(std::get<Record::MX>(data).host), " ");
+      result += absl::StrCat("MX host: ", std::get<Record::MX>(data).host, " ");
     } break;
     case QueryType::AAAA: {
       const std::array<uint16_t, 8>& addr = std::get<Record::AAAA>(data).ip_address;

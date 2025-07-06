@@ -1,5 +1,5 @@
-#ifndef SRC_MACROS_H_
-#define SRC_MACROS_H_
+#ifndef SRC_COMMON_STATUS_MACROS_H_
+#define SRC_COMMON_STATUS_MACROS_H_
 
 #define RETURN_IF_ERROR(expr)            \
   {                                      \
@@ -35,4 +35,4 @@
 #define STATUS_MACROS_IMPL_CONCAT_INNER_(x, y) x##y
 #define STATUS_MACROS_IMPL_CONCAT_(x, y) STATUS_MACROS_IMPL_CONCAT_INNER_(x, y)
 
-#endif // SRC_MACROS_H_
+#endif // SRC_COMMON_STATUS_MACROS_H_

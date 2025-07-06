@@ -1,5 +1,5 @@
-#ifndef SRC_DNS_PACKET_H_
-#define SRC_DNS_PACKET_H_
+#ifndef SRC_DNS_DNS_PACKET_H_
+#define SRC_DNS_DNS_PACKET_H_
 
 #include <array>
 #include <cstdint>
@@ -12,6 +12,8 @@
 #include "absl/status/statusor.h"
 #include "absl/container/btree_map.h"
 
+// This file interfaces with the DNS protocol. E.g. encoding / decoding DNS packets.
+
 class BufferReader {
  public:
   BufferReader(const std::array<uint8_t, 512>& bytes, size_t pos = 0)
@@ -20,7 +22,7 @@ class BufferReader {
   absl::StatusOr<uint8_t> ReadU8();
   absl::StatusOr<uint16_t> ReadU16();
   absl::StatusOr<uint32_t> ReadU32();
-  absl::StatusOr<std::vector<std::string>> ReadLabels(size_t num_jumps = 0);
+  absl::StatusOr<std::string> ReadQName(size_t num_jumps = 0);
 
  private:
   const std::array<uint8_t, 512>& bytes_;
@@ -35,7 +37,7 @@ class BufferWriter {
   absl::Status WriteU8(uint8_t x);
   absl::Status WriteU16(uint16_t x);
   absl::Status WriteU32(uint32_t x);
-  absl::StatusOr<uint16_t> WriteLabels(const std::vector<std::string>& labels);
+  absl::StatusOr<uint16_t> WriteQName(const std::string& qname);
 
  private:
   std::array<uint8_t, 512>& bytes_;
@@ -67,8 +69,6 @@ QueryType QueryTypeFromShort(uint16_t x);
 uint16_t QueryTypeToShort(QueryType type);
 std::string QueryTypeToString(QueryType type);
 
-std::string QNameAssemble(const std::vector<std::string>& qname);
-
 struct Header {
   static absl::StatusOr<Header> FromBytes(BufferReader& reader);
   absl::Status ToBytes(BufferWriter& writer) const;
@@ -99,7 +99,7 @@ struct Question {
   absl::Status ToBytes(BufferWriter& writer) const;
   std::string DebugString() const;
 
-  std::vector<std::string> qname;
+  std::string qname;
   QueryType qtype;
   uint16_t dns_class = 1;
 };
@@ -109,7 +109,7 @@ struct Record {
   absl::Status ToBytes(BufferWriter& writer) const;
   std::string DebugString() const;
 
-  std::vector<std::string> qname;
+  std::string qname;
   QueryType qtype;
   uint16_t dns_class = 1;
   uint32_t ttl;
@@ -117,19 +117,34 @@ struct Record {
 
   struct A {
     std::array<uint8_t, 4> ip_address;
+    bool operator==(const A& other) const {
+      return ip_address == other.ip_address;
+    }
   };
   struct NS {
-    std::vector<std::string> host;
+    std::string host;
+    bool operator==(const NS& other) const {
+      return host == other.host;
+    }
   };
   struct CNAME {
-    std::vector<std::string> host;
+    std::string host;
+    bool operator==(const CNAME& other) const {
+      return host == other.host;
+    }
   };
   struct MX {
     uint16_t priority;
-    std::vector<std::string> host;
+    std::string host;
+    bool operator==(const MX& other) const {
+      return priority == other.priority && host == other.host;
+    }
   };
   struct AAAA {
     std::array<uint16_t, 8> ip_address;
+    bool operator==(const AAAA& other) const {
+      return ip_address == other.ip_address;
+    }
   };
   std::variant<A, NS, CNAME, MX, AAAA> data;
 };
@@ -147,4 +162,4 @@ struct DnsPacket {
   std::vector<Record> additional;
 };
 
-#endif // SRC_DNS_PACKET_H_
+#endif // SRC_DNS_DNS_PACKET_H_

@@ -1,4 +1,4 @@
-#include "src/dns_server.h"
+#include "src/dns/dns_server.h"
 
 #include <array>
 #include <cstdint>
@@ -13,9 +13,9 @@
 #include "absl/strings/str_cat.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "src/client.h"
-#include "src/dns_packet.h"
-#include "src/status_macros.h"
+#include "src/common/status_macros.h"
+#include "src/dns/client.h"
+#include "src/dns/dns_packet.h"
 
 void ServeRequest(DnsServer* server, std::array<uint8_t, 512> request_raw, struct sockaddr_in client_addr) {
   LOG(INFO) << "Serving request for: " << inet_ntoa(client_addr.sin_addr);
@@ -73,21 +73,22 @@ void DnsServer::Wait() {
 
 absl::StatusOr<std::array<uint8_t, 512>> DnsServer::HandleRequest(
     std::array<uint8_t, 512>& request_raw) {
-  ASSIGN_OR_RETURN(DnsPacket request, DnsPacket::FromBytes(request_raw));
+  absl::StatusOr<DnsPacket> request = DnsPacket::FromBytes(request_raw);
+  if (!request.ok()) {
+    BufferReader reader(request_raw);
+    ASSIGN_OR_RETURN(uint16_t id, reader.ReadU16());
+    return CreateResponseTemplate(id, ResponseCode::FORM_ERROR).ToBytes();
+  }
+
   absl::StatusOr<DnsPacket> response;
-  response = Lookup(request);
-  if (!response.ok() && request.header.recursion_desired) {
+  response = Lookup(*request);
+  if (!response.ok() && request->header.recursion_desired) {
     LOG(ERROR) << "Error retrieving results locally: " << response.status();
-    response = Forward(request);
-    if (response.ok()) {
-      for (const Record& record : response->answers) {
-        record_store_->Insert(record);
-      }
-    }
+    response = Forward(*request);
   }
   if (!response.ok()) {
     LOG(ERROR) << "Returning SERV_FAIL response.";
-    return CreateResponseTemplate(request.header.id, ResponseCode::SERV_FAIL).ToBytes();
+    return CreateResponseTemplate(request->header.id, ResponseCode::SERV_FAIL).ToBytes();
   }
   return response->ToBytes();
 }
@@ -102,7 +103,7 @@ absl::StatusOr<DnsPacket> DnsServer::Lookup(DnsPacket& request) {
   std::vector<Record> answers = record_store_->Query(question);
   if (answers.size() == 0) {
     return absl::NotFoundError(
-        absl::StrCat("No records found for qname: ", QNameAssemble(question.qname)));
+        absl::StrCat("No records found for qname: ", question.qname));
   }
 
   DnsPacket response = CreateResponseTemplate(request.header.id, ResponseCode::NO_ERROR);
@@ -120,7 +121,11 @@ absl::StatusOr<DnsPacket> DnsServer::Forward(DnsPacket& request) {
   ASSIGN_OR_RETURN(auto request_raw, request.ToBytes());
   std::array<uint8_t, 512> response_raw = {};
   RETURN_IF_ERROR(fallback_dns_->Call(request_raw, response_raw));
-  return DnsPacket::FromBytes(response_raw);
+  ASSIGN_OR_RETURN(DnsPacket response, DnsPacket::FromBytes(response_raw));
+  for (const Record& record : response.answers) {
+    record_store_->InsertOrUpdate(record);
+  }
+  return response;
 }
 
 DnsPacket DnsServer::CreateResponseTemplate(uint16_t id, ResponseCode response_code) {

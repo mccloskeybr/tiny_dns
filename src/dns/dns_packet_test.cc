@@ -13,34 +13,33 @@ namespace {
 using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
 using ::testing::ContainerEq;
+using ::testing::Eq;
 
-TEST(PacketReaderTest, ReadLabelsNoJumpSuccess) {
+TEST(PacketReaderTest, ReadQNameNoJumpSuccess) {
   std::array<uint8_t, 512> bytes = {
     5, 'h', 'e', 'l', 'l', 'o',
     5, 'w', 'o', 'r', 'l', 'd',
     0 };
   BufferReader reader(bytes);
-  absl::StatusOr<std::vector<std::string>> labels = reader.ReadLabels();
-  std::vector<std::string> expected_labels = { "hello", "world" };
-  EXPECT_THAT(labels, IsOkAndHolds(ContainerEq(expected_labels)));
+  absl::StatusOr<std::string> qname = reader.ReadQName();
+  EXPECT_THAT(qname, IsOkAndHolds(Eq("hello.world")));
 }
 
-TEST(PacketReaderTest, ReadLabelsJumpSuccess) {
+TEST(PacketReaderTest, ReadQNameJumpSuccess) {
   std::array<uint8_t, 512> bytes = {
     4, 'j', 'u', 'm', 'p', 0,
     5, 'h', 'e', 'l', 'l', 'o',
     0xc0, 0x00 };
   BufferReader reader(bytes, 6);
-  absl::StatusOr<std::vector<std::string>> labels = reader.ReadLabels();
-  std::vector<std::string> expected_labels = { "hello", "jump" };
-  EXPECT_THAT(labels, IsOkAndHolds(ContainerEq(expected_labels)));
+  absl::StatusOr<std::string> qname = reader.ReadQName();
+  EXPECT_THAT(qname, IsOkAndHolds(Eq("hello.jump")));
 }
 
-TEST(PacketReaderTest, ReadLabelsJumpLoopReturnsError) {
+TEST(PacketReaderTest, ReadQNameJumpLoopReturnsError) {
   std::array<uint8_t, 512> bytes = {0xc0, 0x00 };
   BufferReader reader(bytes);
-  absl::StatusOr<std::vector<std::string>> labels = reader.ReadLabels();
-  EXPECT_THAT(labels, StatusIs(absl::StatusCode::kInvalidArgument));
+  absl::StatusOr<std::string> qname = reader.ReadQName();
+  EXPECT_THAT(qname, StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(DnsPacketTest, FromBytesSuccess) {
@@ -79,15 +78,13 @@ TEST(DnsPacketTest, FromBytesSuccess) {
   }
   {
     Question question = packet->questions[0];
-    std::vector<std::string> expected_labels = { "google", "com" };
-    EXPECT_THAT(question.qname, ContainerEq(expected_labels));
+    EXPECT_EQ(question.qname, "google.com");
     EXPECT_EQ(question.qtype, QueryType::A);
     EXPECT_EQ(question.dns_class, 1);
   }
   {
     Record& answer = packet->answers[0];
-    std::vector<std::string> expected_labels = { "google", "com" };
-    EXPECT_THAT(answer.qname, ContainerEq(expected_labels));
+    EXPECT_EQ(answer.qname, "google.com");
     EXPECT_EQ(answer.qtype, QueryType::A);
     EXPECT_EQ(answer.dns_class, 1);
     EXPECT_EQ(answer.ttl, 293);
@@ -119,14 +116,14 @@ TEST(DnsPacketTest, ToBytesSuccess) {
   }
   {
     Question question = {};
-    question.qname = { "google", "com" };
+    question.qname = "google.com";
     question.qtype = QueryType::A;
     question.dns_class = 1;
     packet.questions.push_back(std::move(question));
   }
   {
     Record answer = {};
-    answer.qname = { "google", "com" };
+    answer.qname = "google.com";
     answer.qtype = QueryType::A;
     answer.dns_class = 1;
     answer.ttl = 293;
