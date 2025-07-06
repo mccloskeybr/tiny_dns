@@ -57,4 +57,11 @@ grpc::Status DnsAdminServiceClient::InsertOrUpdate(
 grpc::Status DnsAdminServiceClient::Lookup(
     const proto::LookupRequest& request,
     proto::LookupResponse& response) {
+  grpc::ClientContext context;
+  const grpc::Status status = stub_->Lookup(&context, request, &response);
+  if (!status.ok()) {
+    LOG(ERROR) << "Call to Lookup failed: "
+      << status.error_code() << " - " << status.error_message();
+  }
+  return status;
 }
