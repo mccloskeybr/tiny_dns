@@ -50,7 +50,24 @@ grpc::Status ProtoRecordToRecord(
         }
         data.ip_address[i] = (uint8_t) part;
       }
-      record.data = data;
+      record.data = std::move(data);
+    } break;
+    case proto::Record::kUri: {
+      if (proto_record.uri().priority() > std::numeric_limits<uint16_t>::max()) {
+        return grpc::Status(
+            grpc::StatusCode::INVALID_ARGUMENT,
+            absl::StrCat("Priority exceeds uint16 bounds: ", proto_record.uri().priority()));
+      }
+      if (proto_record.uri().weight() > std::numeric_limits<uint16_t>::max()) {
+        return grpc::Status(
+            grpc::StatusCode::INVALID_ARGUMENT,
+            absl::StrCat("Weight exceeds uint16 bounds: ", proto_record.uri().weight()));
+      }
+      Record::URI data = {};
+      data.priority = (uint16_t) proto_record.uri().priority();
+      data.weight = (uint16_t) proto_record.uri().weight();
+      data.target = proto_record.uri().target();
+      record.data = std::move(data);
     } break;
     default: {
       return grpc::Status(
@@ -74,6 +91,13 @@ bool RecordToProtoRecord(
       const std::string addr = absl::StrCat(
           a.ip_address[0], ".", a.ip_address[1], ".", a.ip_address[2], ".", a.ip_address[3]);
       *proto_record.mutable_a()->mutable_addr() = addr;
+    } break;
+    case QueryType::URI: {
+      proto_record.set_qtype(proto::QueryType::QUERY_TYPE_URI);
+      const Record::URI& uri = std::get<Record::URI>(record.data);
+      proto_record.mutable_uri()->set_priority(uri.priority);
+      proto_record.mutable_uri()->set_weight(uri.weight);
+      *proto_record.mutable_uri()->mutable_target() = uri.target;
     } break;
     default: { return false; }
   }

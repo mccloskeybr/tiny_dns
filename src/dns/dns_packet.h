@@ -67,6 +67,7 @@ enum class QueryType : uint16_t {
   CNAME = 5,
   MX = 15,
   AAAA = 28,
+  URI = 256,
 };
 QueryType QueryTypeFromShort(uint16_t x);
 uint16_t QueryTypeToShort(QueryType type);
@@ -112,6 +113,8 @@ struct Record {
   std::string DebugString() const;
 
   std::string qname;
+  // NOTE: preserved separately from data to keep unknown qtype values.
+  // And because switch on variant is garbage.
   QueryType qtype;
   uint16_t dns_class = 1;
   uint32_t ttl;
@@ -154,7 +157,17 @@ struct Record {
       return ip_address == other.ip_address;
     }
   };
-  std::variant<UNKNOWN, A, NS, CNAME, MX, AAAA> data;
+  struct URI {
+    uint16_t priority;
+    uint16_t weight;
+    std::string target;
+    bool operator==(const URI& other) const {
+      return
+        priority == other.priority && weight == other.weight
+        && target == other.target;
+    }
+  };
+  std::variant<UNKNOWN, A, NS, CNAME, MX, AAAA, URI> data;
 };
 
 struct DnsPacket {

@@ -183,6 +183,7 @@ QueryType QueryTypeFromShort(const uint16_t x) {
     case 5: return CNAME;
     case 15: return MX;
     case 28: return AAAA;
+    case 256: return URI;
     default: {
       LOG(WARNING) << "Observed unknown QueryType: " << x;
       return static_cast<QueryType>(x);
@@ -203,6 +204,7 @@ std::string QueryTypeToString(const QueryType type) {
     case CNAME: return "CNAME";
     case MX: return "MX";
     case AAAA: return "AAAA";
+    case URI: return "URI";
     default: CHECK(false); return "";
   }
 }
@@ -372,7 +374,14 @@ absl::StatusOr<Record> Record::FromBytes(BufferReader& reader) {
       ASSIGN_OR_RETURN(aaaa.ip_address[5], reader.ReadU16());
       ASSIGN_OR_RETURN(aaaa.ip_address[6], reader.ReadU16());
       ASSIGN_OR_RETURN(aaaa.ip_address[7], reader.ReadU16());
-      answer.data = aaaa;
+      answer.data = std::move(aaaa);
+    } break;
+    case QueryType::URI: {
+      Record::URI uri = {};
+      ASSIGN_OR_RETURN(uri.priority, reader.ReadU16());
+      ASSIGN_OR_RETURN(uri.weight, reader.ReadU16());
+      ASSIGN_OR_RETURN(uri.target, reader.ReadQName());
+      answer.data = std::move(uri);
     } break;
     case QueryType::UNKNOWN:
     default: {
@@ -397,14 +406,16 @@ absl::Status Record::ToBytes(BufferWriter& writer) const {
   }
   switch (qtype) {
     case QueryType::A: {
-      RETURN_IF_ERROR(writer.WriteU16(4));
+      CHECK(std::holds_alternative<Record::A>(data));
       const Record::A& a = std::get<Record::A>(data);
+      RETURN_IF_ERROR(writer.WriteU16(4));
       RETURN_IF_ERROR(writer.WriteU8(a.ip_address[0]));
       RETURN_IF_ERROR(writer.WriteU8(a.ip_address[1]));
       RETURN_IF_ERROR(writer.WriteU8(a.ip_address[2]));
       RETURN_IF_ERROR(writer.WriteU8(a.ip_address[3]));
     } break;
     case QueryType::NS: {
+      CHECK(std::holds_alternative<Record::NS>(data));
       const Record::NS& ns = std::get<Record::NS>(data);
       BufferWriter len_ptr = writer;
       RETURN_IF_ERROR(writer.WriteU16(0)); // NOTE: write length after label block size is known.
@@ -412,6 +423,7 @@ absl::Status Record::ToBytes(BufferWriter& writer) const {
       RETURN_IF_ERROR(len_ptr.WriteU16(len));
     } break;
     case QueryType::CNAME: {
+      CHECK(std::holds_alternative<Record::CNAME>(data));
       const Record::CNAME& cname = std::get<Record::CNAME>(data);
       BufferWriter len_ptr = writer;
       RETURN_IF_ERROR(writer.WriteU16(0));
@@ -419,6 +431,7 @@ absl::Status Record::ToBytes(BufferWriter& writer) const {
       RETURN_IF_ERROR(len_ptr.WriteU16(len));
     } break;
     case QueryType::MX: {
+      CHECK(std::holds_alternative<Record::MX>(data));
       const Record::MX& mx = std::get<Record::MX>(data);
       BufferWriter len_ptr = writer;
       RETURN_IF_ERROR(writer.WriteU16(0));
@@ -427,6 +440,7 @@ absl::Status Record::ToBytes(BufferWriter& writer) const {
       RETURN_IF_ERROR(len_ptr.WriteU16(2 + len));
     } break;
     case QueryType::AAAA: {
+      CHECK(std::holds_alternative<Record::AAAA>(data));
       const Record::AAAA& aaaa = std::get<Record::AAAA>(data);
       RETURN_IF_ERROR(writer.WriteU16(16));
       RETURN_IF_ERROR(writer.WriteU16(aaaa.ip_address[0]));
@@ -438,8 +452,19 @@ absl::Status Record::ToBytes(BufferWriter& writer) const {
       RETURN_IF_ERROR(writer.WriteU16(aaaa.ip_address[6]));
       RETURN_IF_ERROR(writer.WriteU16(aaaa.ip_address[7]));
     } break;
+    case QueryType::URI: {
+      CHECK(std::holds_alternative<Record::URI>(data));
+      const Record::URI& uri = std::get<Record::URI>(data);
+      BufferWriter len_ptr = writer;
+      RETURN_IF_ERROR(writer.WriteU16(0));
+      RETURN_IF_ERROR(writer.WriteU16(uri.priority));
+      RETURN_IF_ERROR(writer.WriteU16(uri.weight));
+      ASSIGN_OR_RETURN(uint16_t len, writer.WriteQName(uri.target));
+      RETURN_IF_ERROR(len_ptr.WriteU16(4 + len));
+    } break;
     case QueryType::UNKNOWN:
     default: {
+      CHECK(std::holds_alternative<Record::UNKNOWN>(data));
       const Record::UNKNOWN& unknown = std::get<Record::UNKNOWN>(data);
       RETURN_IF_ERROR(writer.WriteU16(unknown.bytes.size()));
       for (size_t i = 0; i < unknown.bytes.size(); i++) {
@@ -459,27 +484,39 @@ std::string Record::DebugString() const {
   result += absl::StrCat("ttl: ", ttl, " ");
   switch (qtype) {
     case QueryType::A: {
+      CHECK(std::holds_alternative<Record::A>(data));
       const std::array<uint8_t, 4>& addr = std::get<Record::A>(data).ip_address;
       result += absl::StrCat("IPv4: ", addr[0], ".", addr[1], ".", addr[2], ".", addr[3], " ");
     } break;
     case QueryType::NS: {
+      CHECK(std::holds_alternative<Record::NS>(data));
       result += absl::StrCat("NS host: ", std::get<Record::NS>(data).host, " ");
     } break;
     case QueryType::CNAME: {
+      CHECK(std::holds_alternative<Record::CNAME>(data));
       result += absl::StrCat("CNAME host: ", std::get<Record::CNAME>(data).host, " ");
     } break;
     case QueryType::MX: {
+      CHECK(std::holds_alternative<Record::MX>(data));
       result += absl::StrCat("MX priority: ", std::get<Record::MX>(data).priority, " ");
       result += absl::StrCat("MX host: ", std::get<Record::MX>(data).host, " ");
     } break;
     case QueryType::AAAA: {
+      CHECK(std::holds_alternative<Record::AAAA>(data));
       const std::array<uint16_t, 8>& addr = std::get<Record::AAAA>(data).ip_address;
       result += absl::StrFormat(
           "IPv6: %0x:%0x:%0x:%0x:%0x:%0x:%0x:%0x ",
           addr[0], addr[1], addr[2], addr[3], addr[4], addr[5], addr[6], addr[7]);
     } break;
+    case QueryType::URI: {
+      CHECK(std::holds_alternative<Record::URI>(data));
+      result += absl::StrCat("URI priority: ", std::get<Record::URI>(data).priority, " ");
+      result += absl::StrCat("URI weight: ", std::get<Record::URI>(data).weight, " ");
+      result += absl::StrCat("URI target: ", std::get<Record::URI>(data).target, " ");
+    } break;
     case QueryType::UNKNOWN:
     default: {
+      CHECK(std::holds_alternative<Record::UNKNOWN>(data));
       result += absl::StrCat("Unknown byte length: ", std::get<Record::UNKNOWN>(data).bytes.size(), " ");
     } break;
   }
