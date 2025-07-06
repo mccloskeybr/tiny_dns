@@ -11,6 +11,8 @@
 // DNS records. Failed lookups get shunted and then cached here.
 // Manual entries are placed here. That kind of thing.
 
+namespace tiny_dns {
+
 // TODO: LRU cache to ensure shards don't become too large.
 static constexpr size_t kShardCount = 32;
 
@@ -44,5 +46,7 @@ class RecordStore {
   std::array<RecordStoreShard, kShardCount> shards_;
   std::hash<std::string> hasher_;
 };
+
+} // tiny_dns
 
 #endif // SRC_DNS_RECORD_STORE_H_

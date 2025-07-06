@@ -13,6 +13,8 @@
 #include "src/dns/dns_packet.h"
 #include "src/dns/record_store.h"
 
+namespace tiny_dns {
+
 // Triages and serves incoming UDP requests.
 class DnsServer {
  public:
@@ -43,5 +45,7 @@ class DnsServer {
 
   friend void ServeRequest(DnsServer*, std::array<uint8_t, 512>, struct sockaddr_in);
 };
+
+} // tiny_dns
 
 #endif // SRC_DNS_SERVER_H_

@@ -12,6 +12,7 @@
 #include "src/dns/record_store.h"
 #include "src/dns/dns_packet.h"
 
+namespace tiny_dns {
 namespace {
 
 grpc::Status ProtoRecordToRecord(
@@ -183,3 +184,5 @@ grpc::Status DnsAdminServiceImpl::Lookup(
   }
   return grpc::Status::OK;
 }
+
+} // tiny_dns

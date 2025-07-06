@@ -9,6 +9,8 @@
 #include "grpcpp/grpcpp.h"
 #include "src/admin/dns_admin_service.grpc.pb.h"
 
+namespace tiny_dns {
+
 // NOTE: Any TTL below this will be overridden.
 static const int32_t kMinimumAllowedTtl = 60;
 
@@ -38,5 +40,7 @@ class DnsAdminServiceClient {
 
   friend void RefreshTtl(DnsAdminServiceClient*, proto::Record);
 };
+
+} // tiny_dns
 
 #endif // SRC_ADMIN_DNS_ADMIN_SERVICE_CLIENT_H_

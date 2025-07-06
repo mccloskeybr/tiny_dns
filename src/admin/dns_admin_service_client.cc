@@ -6,6 +6,8 @@
 
 #include "absl/log/log.h"
 
+namespace tiny_dns {
+
 void RefreshTtl(DnsAdminServiceClient* client, proto::Record record) {
   LOG(INFO) << "Automatically refreshing record: " << record;
   while (!client->terminate_threads_) {
@@ -65,3 +67,5 @@ grpc::Status DnsAdminServiceClient::Lookup(
   }
   return status;
 }
+
+} // tiny_dns

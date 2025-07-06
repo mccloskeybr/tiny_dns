@@ -31,6 +31,8 @@ ABSL_FLAG(std::string, fallback_dns_addr, "8.8.8.8",
 ABSL_FLAG(int32_t, fallback_dns_port, 53,
           "fallback DNS server port.");
 
+using namespace tiny_dns;
+
 int main(int argc, char** argv) {
   absl::ParseCommandLine(argc, argv);
   absl::InitializeLog();

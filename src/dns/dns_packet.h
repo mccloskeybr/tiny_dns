@@ -14,6 +14,8 @@
 
 // This file interfaces with the DNS protocol. E.g. encoding / decoding DNS packets.
 
+namespace tiny_dns {
+
 class BufferReader {
  public:
   BufferReader(const std::array<uint8_t, 512>& bytes, size_t pos = 0)
@@ -184,5 +186,7 @@ struct DnsPacket {
   std::vector<Record> authorities;
   std::vector<Record> additional;
 };
+
+} // tiny_dns
 
 #endif // SRC_DNS_DNS_PACKET_H_

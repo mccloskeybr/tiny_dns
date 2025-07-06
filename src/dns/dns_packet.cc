@@ -16,6 +16,8 @@
 #include "absl/strings/str_join.h"
 #include "src/common/status_macros.h"
 
+namespace tiny_dns {
+
 absl::StatusOr<uint8_t> BufferReader::ReadU8() {
   if (cursor_ > &bytes_.back()) {
     return absl::InvalidArgumentError(
@@ -617,3 +619,5 @@ std::string DnsPacket::DebugString() const {
   result += "}";
   return result;
 }
+
+} // tiny_dns

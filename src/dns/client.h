@@ -12,6 +12,8 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 
+namespace tiny_dns {
+
 // Represents a UDP connection with an external server.
 // Not thread safe; intended to be owned by a single thread.
 class Client {
@@ -77,5 +79,7 @@ class Client {
   const int32_t socket_fd_;
   const struct sockaddr_in dest_addr_;
 };
+
+} // tiny_dns
 
 #endif // SRC_DNS_CLIENT_H_

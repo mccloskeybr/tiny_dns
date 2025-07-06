@@ -9,6 +9,8 @@
 #include "src/dns/record_store.h"
 #include "src/dns/client.h"
 
+namespace tiny_dns {
+
 // gRPC service exposing non-DNS lookup functionality. For example,
 // registering DNS records manually from some other service.
 class DnsAdminServiceImpl final : public proto::DnsAdminService::Service {
@@ -32,5 +34,7 @@ class DnsAdminServiceImpl final : public proto::DnsAdminService::Service {
   std::shared_ptr<RecordStore> record_store_;
   std::shared_ptr<Client> dns_server_;
 };
+
+} // tiny_dns
 
 #endif // SRC_ADMIN_DNS_ADMIN_SERVICE_IMPL_H_

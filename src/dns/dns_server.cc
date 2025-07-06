@@ -17,6 +17,8 @@
 #include "src/dns/client.h"
 #include "src/dns/dns_packet.h"
 
+namespace tiny_dns {
+
 void ServeRequest(DnsServer* server, std::array<uint8_t, 512> request_raw, struct sockaddr_in client_addr) {
   LOG(INFO) << "Serving request for: " << inet_ntoa(client_addr.sin_addr);
   const absl::StatusOr<std::array<uint8_t, 512>> response_raw = server->HandleRequest(request_raw);
@@ -135,3 +137,5 @@ DnsPacket DnsServer::CreateResponseTemplate(uint16_t id, ResponseCode response_c
   response.header.recursion_available = (fallback_dns_ != nullptr);
   return response;
 }
+
+} // tiny_dns

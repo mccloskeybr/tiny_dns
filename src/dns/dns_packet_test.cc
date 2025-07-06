@@ -8,6 +8,7 @@
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 
+namespace tiny_dns {
 namespace {
 
 using ::absl_testing::IsOkAndHolds;
@@ -151,3 +152,4 @@ TEST(DnsPacketTest, ToBytesSuccess) {
 }
 
 } // namespace
+} // tiny_dns

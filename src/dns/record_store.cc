@@ -10,6 +10,8 @@
 #include "absl/strings/str_join.h"
 #include "src/dns/dns_packet.h"
 
+namespace tiny_dns {
+
 void RemoveRecordAfterTtl(RecordStore* store, const Record record) {
   LOG(INFO) << "Scheduling removal of: " << record.DebugString()
     << " in: " << record.ttl << "s.";
@@ -99,3 +101,5 @@ std::vector<Record> RecordStore::Query(const Question& question) {
     << ", record store contained: [ " << absl::StrJoin(hit_qnames, ", ") << " ].";
   return hits;
 }
+
+} // tiny_dns
